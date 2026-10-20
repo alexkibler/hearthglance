@@ -8,4 +8,6 @@ The 0.1.0 package was checked on 2026-10-20.
 - The recurring-chore YAML was accepted by Home Assistant 2026.10.1's `AUTOMATION_BLUEPRINT_SCHEMA` and `Blueprint` validator in memory. It was not installed or enabled during this package check.
 - Generic YAML examples and workflow files parsed successfully. The archive uses an explicit file allowlist and excludes dependencies, local configuration, credentials, and backups. All screenshots are fictional.
 
-Still required after publication: remote HACS action, clean HACS installation/download/resource registration, update flow, blueprint import, and real touchscreen/device performance testing. Public repository: https://github.com/alexkibler/hearthglance. HACS catalog inclusion remains a separate submission.
+The [initial GitHub validation run](https://github.com/alexkibler/hearthglance/actions/runs/39505174166) passed both Linux build/tests and the official HACS validator without ignored checks.
+
+Still required: clean HACS installation/download/resource registration, update flow, blueprint import, and real touchscreen/device performance testing. Public repository: https://github.com/alexkibler/hearthglance. HACS catalog inclusion remains a separate submission.
