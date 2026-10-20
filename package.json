@@ -1,0 +1,29 @@
+{
+  "name": "hearthglance-card",
+  "version": "0.1.0",
+  "description": "A native Home Assistant family dashboard for wall displays and phones.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm test && npm run build",
+    "demo": "python3 -m http.server 8128 --bind 127.0.0.1",
+    "package": "npm run check && python3 scripts/package.py"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexkibler/hearthglance.git"
+  },
+  "homepage": "https://github.com/alexkibler/hearthglance#readme",
+  "bugs": {
+    "url": "https://github.com/alexkibler/hearthglance/issues"
+  }
+}

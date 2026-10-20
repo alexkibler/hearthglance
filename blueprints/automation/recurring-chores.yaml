@@ -1,0 +1,69 @@
+blueprint:
+  name: Hearthglance - Recurring chores
+  description: >-
+    Return completed daily, weekday, and weekly chores when due. Select the
+    Local To-do entities assigned to Hearthglance profiles. One-time tasks and
+    unfinished overdue tasks are left alone. Runs at 00:05 and on HA startup.
+  domain: automation
+  homeassistant:
+    min_version: 2026.10.0
+  input:
+    chore_lists:
+      name: Chore lists
+      description: Use the same Local To-do entities as people[].todo in the card.
+      selector:
+        entity:
+          filter:
+            - domain: todo
+              integration: local_todo
+          multiple: true
+triggers:
+  - trigger: time
+    at: '00:05:00'
+  - trigger: homeassistant
+    event: start
+actions:
+  - repeat:
+      for_each: !input chore_lists
+      sequence:
+        - action: todo.get_items
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            status: completed
+          response_variable: hearthglance_completed
+        - variables:
+            hearthglance_list: '{{ repeat.item }}'
+        - repeat:
+            for_each: '{{ hearthglance_completed.get(hearthglance_list, {}).get("items", []) }}'
+            sequence:
+              - variables:
+                  hearthglance_meta: >-
+                    {% set metadata = repeat.item.get('description', '') | from_json({}) %}
+                    {{ metadata.get('hearthglance', {}) if metadata is mapping and metadata.get('hearthglance', {}) is mapping else {} }}
+                  hearthglance_due: '{{ (repeat.item.get("due") or "")[:10] }}'
+                  hearthglance_today: '{{ now().date() | string }}'
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {% set pattern = hearthglance_meta.get('repeat', 'none') %}
+                      {% set due = strptime(hearthglance_due, '%Y-%m-%d', none) %}
+                      {{ due is not none and hearthglance_due < hearthglance_today
+                         and (pattern == 'daily'
+                           or (pattern == 'weekdays' and now().weekday() < 5)
+                           or (pattern == 'weekly' and (now().date() - due.date()).days >= 7)) }}
+                then:
+                  - action: todo.update_item
+                    target:
+                      entity_id: '{{ hearthglance_list }}'
+                    data:
+                      item: '{{ repeat.item.uid }}'
+                      status: needs_action
+                      due_date: >-
+                        {% set due = strptime(hearthglance_due, '%Y-%m-%d') %}
+                        {% if hearthglance_meta.get('repeat') == 'weekly' %}
+                          {{ (now().date() - timedelta(days=(now().weekday() - due.weekday()) % 7)) | string }}
+                        {% else %}
+                          {{ hearthglance_today }}
+                        {% endif %}
+mode: single

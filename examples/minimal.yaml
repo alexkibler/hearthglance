@@ -1,0 +1,16 @@
+# Minimum complete dashboard: only one calendar entity is required.
+title: Hearthglance
+views:
+  - title: Family
+    path: family
+    type: panel
+    cards:
+      - type: custom:hearthglance-card
+        household: Our family
+        people:
+          - id: family
+            name: Family
+        calendars:
+          - entity: calendar.family
+            person: family
+            name: Family

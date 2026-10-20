@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Hearthglance — fictional demo</title>
+  <style>body{margin:0;background:#f6f7f4}#failure{padding:2rem;font:18px sans-serif;color:#a00}</style>
+</head>
+<body>
+  <div id="failure" role="alert"></div>
+  <script type="module">
+    import '../dist/hearthglance-card.js';
+    import {config,createDemoHass} from './mock-hass.js';
+    try {
+      const card=document.createElement('hearthglance-card');
+      const minimal=new URLSearchParams(location.search).has('minimal');
+      card.setConfig(minimal?{people:[{id:'family',name:'Family'}],calendars:[{entity:'calendar.family',name:'Family'}]}:config);
+      card.hass=createDemoHass();
+      document.body.append(card);
+    } catch(error) { document.querySelector('#failure').textContent=error.message; }
+  </script>
+</body>
+</html>

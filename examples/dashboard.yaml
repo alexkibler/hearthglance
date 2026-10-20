@@ -1,0 +1,52 @@
+# Paste into a new dashboard's Raw configuration editor.
+# Replace entity IDs with your own. Remove optional sections you don't use.
+title: Hearthglance
+views:
+  - title: Family
+    path: family
+    type: panel
+    cards:
+      - type: custom:hearthglance-card
+        household: Our family
+        weather: weather.home
+        default_calendar: calendar.family
+        people:
+          - id: family
+            name: Family
+            color: '#527d59'
+            pale: '#eaf2e7'
+            todo: todo.family_chores
+          - id: sam
+            name: Sam
+            color: '#397f86'
+            pale: '#e8f2f2'
+            todo: todo.sam_chores
+          - id: riley
+            name: Riley
+            color: '#9a6e8e'
+            pale: '#f3eaf1'
+            todo: todo.riley_chores
+        calendars:
+          - entity: calendar.family
+            name: Family
+            person: family
+          - entity: calendar.sam
+            name: Sam
+            person: sam
+          - entity: calendar.riley
+            name: Riley
+            person: riley
+          - entity: calendar.meals
+            name: Meal plan
+            person: family
+            kind: meals
+          - entity: calendar.holidays
+            name: Holidays
+            person: family
+            auxiliary: true
+        lists:
+          - name: Groceries
+            entity: todo.groceries
+          - name: Things to do
+            entity: todo.things_to_do
+        recipes: todo.recipes
