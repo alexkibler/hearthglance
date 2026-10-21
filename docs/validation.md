@@ -11,3 +11,7 @@ The 0.1.0 package was checked on 2026-10-20.
 The [initial GitHub validation run](https://github.com/alexkibler/hearthglance/actions/runs/39505174166) passed both Linux build/tests and the official HACS validator without ignored checks.
 
 Still required: clean HACS installation/download/resource registration, update flow, blueprint import, and real touchscreen/device performance testing. Public repository: https://github.com/alexkibler/hearthglance. HACS catalog inclusion remains a separate submission.
+
+## 0.2.0 solar generation
+
+Checked on 2026-10-21: 26 automated tests passed, including actual-versus-forecast sources, unit conversion, zero/unavailable/offline handling, optional configuration, and live value updates without rebuilding the page. Fictional browser previews were checked at 1920 × 1080, 1280 × 800, 390 × 844, and 320 × 740. Public screenshots contain fictional data only.

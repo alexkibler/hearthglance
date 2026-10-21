@@ -41,7 +41,7 @@ HACS's default catalog is a separate submission process; install this project as
 
 ## Manual installation
 
-Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.1.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.2.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
 
 ## Start small
 
@@ -88,6 +88,10 @@ HACS installs the frontend card; it does **not** install automation blueprints a
 The automation runs at 00:05 and on HA startup. A completed chore remains completed for its due day, then reopens when next due. Weekly chores retain their original weekday, even after downtime. Unfinished overdue chores remain unfinished, and one-time tasks stay completed. Without this automation, the repeat label alone does not reopen chores. Avoid creating duplicate automations for the same lists.
 
 ## Solar generation
+
+![Solar panel with fictional demo data](docs/images/solar-wall.png)
+
+<img src="docs/images/solar-phone.png" alt="Phone solar panel with fictional demo data" width="300">
 
 Add the sensors you want to display on the home screen. No additional integration or API key is needed by Hearthglance. These values update through the normal HA frontend connection.
 
