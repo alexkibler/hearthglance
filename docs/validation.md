@@ -15,3 +15,7 @@ Still required: clean HACS installation/download/resource registration, update f
 ## 0.2.0 solar generation
 
 Checked on 2026-10-21: 26 automated tests passed, including actual-versus-forecast sources, unit conversion, zero/unavailable/offline handling, optional configuration, and live value updates without rebuilding the page. Fictional browser previews were checked at 1920 × 1080, 1280 × 800, 390 × 844, and 320 × 740. Public screenshots contain fictional data only.
+
+## 0.2.1 compact solar header
+
+Checked on 2026-10-21: all 26 tests pass with separate actual/today-forecast/tomorrow-forecast readings. The compact heading layout was previewed at 1280 × 800 and phone widths of 390 and 320 pixels. Generic previews were updated.

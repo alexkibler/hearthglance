@@ -12,6 +12,7 @@ views:
         solar:
           power: sensor.solar_power
           today: sensor.solar_energy_today
+          forecast_today: sensor.solar_forecast_today
           forecast_tomorrow: sensor.solar_forecast_tomorrow
         default_calendar: calendar.family
         people:

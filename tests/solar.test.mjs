@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {solarReadings, solarStatesChanged} from '../src/solar.js';
 import {normalizeConfig} from '../src/config.js';
 const sensor=(value,unit)=>({state:String(value),attributes:{unit_of_measurement:unit}});
-const config={power:'sensor.solar_power',today:'sensor.solar_today',forecast_tomorrow:'sensor.solar_tomorrow'};
+const config={power:'sensor.solar_power',today:'sensor.solar_today',forecast_today:'sensor.solar_forecast_today',forecast_tomorrow:'sensor.solar_tomorrow'};
 const base=()=>({people:[{id:'family',name:'Family'}],calendars:[{entity:'calendar.family'}]});
-test('solar uses actual power, actual daily energy, and a distinct tomorrow forecast',()=>{
- const rows=solarReadings(config,{'sensor.solar_power':sensor(4415,'W'),'sensor.solar_today':sensor(6507,'Wh'),'sensor.solar_tomorrow':sensor(0.046188,'MWh')});
- assert.deepEqual(rows.map(r=>[r.key,r.value,r.unit]),[['power','4.42','kW'],['today','6.51','kWh'],['forecast_tomorrow','46.19','kWh']]);
- assert.equal(rows[2].label,'Tomorrow forecast');
+test('solar uses actual power, actual daily energy, and distinct today/tomorrow forecasts',()=>{
+ const rows=solarReadings(config,{'sensor.solar_power':sensor(4415,'W'),'sensor.solar_today':sensor(6507,'Wh'),'sensor.solar_forecast_today':sensor(48.24,'kWh'),'sensor.solar_tomorrow':sensor(0.046188,'MWh')});
+ assert.deepEqual(rows.map(r=>[r.key,r.value,r.unit]),[['power','4.42','kW'],['today','6.51','kWh'],['forecast_today','48.24','kWh'],['forecast_tomorrow','46.19','kWh']]);
+ assert.equal(rows[2].label,'Today forecast');assert.equal(rows[3].label,'Tomorrow forecast');
+ assert.deepEqual(normalizeConfig({...base(),solar:{forecast_today:config.forecast_today}}).solar,{forecast_today:config.forecast_today});
 });
 test('zero is a valid solar reading while missing, offline, and incompatible units are unavailable',()=>{
  assert.equal(solarReadings({power:config.power},{[config.power]:sensor(0,'kW')})[0].value,'0');

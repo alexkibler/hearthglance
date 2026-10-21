@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Compact solar readings alongside the home heading, with more space for the calendar.
+- Add today’s forecast alongside current power, today’s actual energy, and tomorrow’s forecast.
+- Move the compact phone readings above the feature shortcuts.
+
 ## 0.2.0
 
 - Optional solar generation panel on wall and phone home screens.

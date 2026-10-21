@@ -159,7 +159,8 @@ class HearthglanceCard extends HTMLElement {
   const titles={home:['YOUR FAMILY, AT A GLANCE','A little more together.','The week ahead, and what matters today.'],calendar:['THE FAMILY SCHEDULE','Calendar','One place for everyone’s plans.'],tasks:['SMALL THINGS, SHARED','Chores & routines','A little teamwork goes a long way.'],list:['LESS TO REMEMBER','Shared lists','For the things you need, and the things to do.'],meals:['AROUND THE TABLE','Meal planner','Good food. One less decision.'],recipes:['FAMILY FAVORITES','Recipes','Your family favorites, ready for the week.']};
   const [eyebrow,title,subtitle]=titles[this._page];
   const primary=this._page==='recipes'?['Add recipe','add-recipe']:this._page==='tasks'?['Add chore','add-task']:this._page==='list'?['Add item','add-list-item']:this._page==='meals'?['Plan a meal','add-meal']:['Add event','add-event'];
-  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="head-actions">${button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"')}${button(icon('plus')+primary[0],primary[1],'btn primary')}</div></div>${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._mealsPage()}`;
+  const solar=this._page==='home'?this._solarHTML():'';
+  main.innerHTML=`<div class="page-head ${solar?'with-solar':''}"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div>${solar}<div class="head-actions">${button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"')}${button(icon('plus')+primary[0],primary[1],'btn primary')}</div></div>${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._mealsPage()}`;
   main.scrollTop=scroll;
  }
  _profiles(){return `<div class="profiles" aria-label="Family filters">${this._config.people.map(p=>button(`<span class="avatar">${esc(p.initial)}</span>${esc(p.name)}`,'filter',`profile ${this._hidden.has(p.id)?'off':''}`,`data-person="${p.id}" style="${personStyle(p)}" aria-pressed="${!this._hidden.has(p.id)}"`)).join('')}${button('Other calendars','other-calendars','text-link')}</div>`;}
@@ -169,7 +170,7 @@ class HearthglanceCard extends HTMLElement {
   if(this._page==='calendar')return filters+calendar;
   const meals=eventsOn(Object.values(this._events).flat().filter(e=>e.calendar.kind==='meals'),new Date());
   const dinner=meals.find(e=>mealMeta(e).slot==='Dinner')||meals[0];
-  return `${filters}${this._solarHTML()}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${button(dinner?'View meals':'Plan dinner',dinner?'go-meals':'add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
+  return `${filters}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${button(dinner?'View meals':'Plan dinner',dinner?'go-meals':'add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
  }
  _toolbar(view=this._view){
   const range=rangeFor(view,this._date);
@@ -215,7 +216,7 @@ class HearthglanceCard extends HTMLElement {
  _solarHTML(){
   const readings=solarReadings(this._config.solar,this._hass?.states,this._hass?.connected);
   if(!readings.length)return '';
-  return `<section class="solar-panel" aria-label="Solar generation"><div class="solar-header"><h2>${icon('sun')}Solar generation</h2><a class="solar-link" href="/energy" aria-label="Open Home Assistant Energy dashboard">Details ↗</a></div><dl class="solar-metrics" style="--solar-count:${readings.length}">${readings.map(r=>`<div class="solar-metric"><dt>${esc(r.label)}</dt><dd data-solar-value="${r.key}">${this._solarValueHTML(r)}</dd></div>`).join('')}</dl></section>`;
+  return `<section class="solar-panel" aria-label="Solar generation"><a class="solar-link" href="/energy" aria-label="Open Home Assistant Energy dashboard" title="Solar generation details">${icon('sun')}</a><dl class="solar-metrics" style="--solar-count:${readings.length}">${readings.map(r=>`<div class="solar-metric"><dt>${esc(r.label)}</dt><dd data-solar-value="${r.key}">${this._solarValueHTML(r)}</dd></div>`).join('')}</dl></section>`;
  }
  _renderSolar(){
   for(const reading of solarReadings(this._config.solar,this._hass?.states,this._hass?.connected)){

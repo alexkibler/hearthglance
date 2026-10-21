@@ -44,8 +44,8 @@ export function normalizeConfig(raw) {
   let solar;
   if (raw.solar != null) {
     if (typeof raw.solar !== 'object' || Array.isArray(raw.solar)) throw new Error('Hearthglance: solar must be an object of sensor entity IDs.');
-    solar = Object.fromEntries(['power', 'today', 'forecast_tomorrow'].filter(key => raw.solar[key] !== undefined).map(key => [key, entity(raw.solar[key], 'sensor', `solar.${key}`)]));
-    if (!Object.keys(solar).length) throw new Error('Hearthglance: solar needs power, today, or forecast_tomorrow.');
+    solar = Object.fromEntries(['power', 'today', 'forecast_today', 'forecast_tomorrow'].filter(key => raw.solar[key] !== undefined).map(key => [key, entity(raw.solar[key], 'sensor', `solar.${key}`)]));
+    if (!Object.keys(solar).length) throw new Error('Hearthglance: solar needs power, today, forecast_today, or forecast_tomorrow.');
   }
   const default_calendar = raw.default_calendar ? entity(raw.default_calendar, 'calendar', 'default_calendar') : calendars.find(c => !c.kind)?.entity;
   if (default_calendar && !calendars.some(c => c.entity === default_calendar && c.kind !== 'meals')) throw new Error('Hearthglance: default_calendar must be a configured regular calendar.');
