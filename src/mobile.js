@@ -25,7 +25,7 @@ export function mobileMethods({icon,button,format,time,personStyle,weatherGlyph}
    const same=this._phoneRenderKey===key,scroll=same?(oldScroll?.scrollTop||0):0,timelineScroll=same?oldTimeline?.scrollTop:null;
    this._phoneRenderKey=key;
    const titles={home:this._config.household||'Our family',calendar:format(this._date,{month:'long',year:'numeric'}),tasks:'Tasks',list:this._mobileListOpen?this._config.lists[this._list].name:'Lists',meals:'Meal planner',recipes:'Recipes'};
-   const header=`<header class="phone-header">${this._page==='home'?'<span class="phone-home-mark">'+icon('leaf')+'</span>':button(icon('left'),'phone-back','phone-icon','aria-label="Back"')}<h1>${esc(titles[this._page]||'Family')}</h1>${button(icon('settings'),'settings','phone-icon','aria-label="Dashboard settings"')}</header>`;
+   const header=`<header class="phone-header">${this._page==='home'?'<a class="phone-icon phone-home-mark ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">'+icon('ha')+'</a>':button(icon('left'),'phone-back','phone-icon','aria-label="Back"')}<h1>${esc(titles[this._page]||'Family')}</h1>${button(icon('settings'),'settings','phone-icon','aria-label="Dashboard settings"')}</header>`;
    const error=this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:'';
    const content=this._page==='home'?this._phoneHome():this._page==='calendar'?this._phoneCalendar():this._page==='tasks'?this._phoneTasks():this._page==='list'?this._phoneLists():this._page==='recipes'?this._phoneRecipes():this._phoneMeals();
    const toolbar=this._page==='calendar'?this._phoneCalendarTools():'';

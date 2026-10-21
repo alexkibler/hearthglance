@@ -27,3 +27,7 @@ Checked on 2026-10-21: all 27 tests pass, including date matching across year bo
 ## 0.3.0 daily solar forecasts
 
 Checked on 2026-10-21: all 29 tests pass, including six distinct daily forecasts across DST, existing two-day configuration compatibility, unavailable values, and nested forecast sensor updates. Fictional browser previews were checked at 1280 × 800 and 390 × 844. The phone strip contains all six daily values and scrolls horizontally. Visible solar labels were removed; accessible and hover descriptions remain.
+
+## 0.3.1 Home Assistant navigation
+
+Checked on 2026-10-21: all 29 existing tests pass. The Home Assistant icon and Overview link were checked in wall and phone layouts. Phone Calendar navigation still returns home through its back arrow. The bundled resource includes the icon license notices.

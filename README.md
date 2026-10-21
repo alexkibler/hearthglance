@@ -4,9 +4,9 @@ A family dashboard for Home Assistant, built for a wall touchscreen and comforta
 
 Calendars, chores, shared lists, meals, recipes, and weather live together in a single native dashboard card. Your existing Home Assistant calendar and to-do integrations hold the data. No separate server, account, or subscription is needed.
 
-![Wall dashboard with fictional demo data](docs/images/wall.png)
+![Wall dashboard with fictional demo data](docs/images/solar-wall.jpg)
 
-<img src="docs/images/phone.png" alt="Phone dashboard with fictional demo data" width="300">
+<img src="docs/images/solar-phone.jpg" alt="Phone dashboard with fictional demo data" width="300">
 
 ## What you get
 
@@ -17,6 +17,10 @@ Calendars, chores, shared lists, meals, recipes, and weather live together in a 
 - Solar generation within the weather forecast: today’s actual / forecast energy and predicted energy for every available future day, on wall and phone home screens.
 - Optional recurring chore automation, daily weather forecast, dark appearance, and per-display filters.
 - A single bundled JavaScript file with no runtime libraries, external fonts, analytics, or direct third-party requests. Calendar integrations may themselves use cloud services.
+
+### Opening on a phone
+
+Open the same Hearthglance dashboard URL in your phone browser, or select Hearthglance in the Home Assistant companion app sidebar. The phone layout activates automatically at 600 px or narrower. The Home Assistant icon in the upper-left returns to HA’s Overview dashboard; back arrows inside phone sections return to Hearthglance’s home screen.
 
 ## Requirements
 
@@ -41,7 +45,7 @@ HACS's default catalog is a separate submission process; install this project as
 
 ## Manual installation
 
-Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.2.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.3.1` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
 
 ## Start small
 
@@ -158,4 +162,4 @@ npm run package
 
 The demo is an offline mock of Home Assistant with fictional data. Its writes stay in memory and reset on reload. `npm run package` creates a reproducible ZIP and SHA-256 checksum in `releases/`. The ZIP includes source, bundled card, examples, blueprint, docs, license, and workflows. It excludes local HA configuration, backups, credentials, and dependencies.
 
-See [Contributing](CONTRIBUTING.md), [Publishing](docs/publishing.md), and [Changelog](CHANGELOG.md). MIT licensed.
+See [Contributing](CONTRIBUTING.md), [Publishing](docs/publishing.md), and [Changelog](CHANGELOG.md). MIT licensed. The Home Assistant icon comes from Material Design Icons under Apache 2.0; see [icon notices](docs/third-party-icons.txt).

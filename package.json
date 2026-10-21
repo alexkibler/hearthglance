@@ -1,6 +1,6 @@
 {
   "name": "hearthglance-card",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A native Home Assistant family dashboard for wall displays and phones.",
   "type": "module",
   "private": true,

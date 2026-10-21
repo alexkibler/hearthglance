@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Replace the decorative leaf with a Home Assistant icon linking to HA’s Overview dashboard on wall and phone home screens.
+- Document opening Hearthglance on a phone and keep phone section back navigation.
+
 ## 0.3.0
 
 - Support daily forecast sensor lists for today and all five future weather days.
