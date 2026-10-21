@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Support daily forecast sensor lists for today and all five future weather days.
+- Show only kWh values under the weather; keep explanatory labels on hover and for accessibility.
+- Preserve existing today/tomorrow configurations and omit unavailable dates rather than repeating an estimate.
+
 ## 0.2.2
 
 - Integrate solar energy into the weather forecast on wall and phone views.

@@ -45,3 +45,21 @@ test('weather pairs actual and forecast today, shows only forecast tomorrow, and
  assert.equal(solarForDate(undefined,states,today,today),null);
  assert.equal(solarForDate(config,states,today,today,false).actual.status,'Offline');
 });
+
+test('daily forecast sensors fill every matching day without repeating tomorrow, including DST',()=>{
+ const today=new Date(2026,9,31),forecasts=Array.from({length:6},(_,i)=>`sensor.forecast_${i}`);
+ const solar={today:'sensor.actual',forecasts};
+ const states=Object.fromEntries(forecasts.map((id,i)=>[id,sensor(20+i,'kWh')]));states['sensor.actual']=sensor(7,'kWh');
+ for(let i=0;i<6;i++){
+  const day=new Date(2026,9,31+i),value=solarForDate(solar,states,day,today);
+  assert.equal(value.forecast.value,String(20+i));assert.equal(Boolean(value.actual),i===0);
+ }
+ assert.equal(solarForDate(solar,states,new Date(2026,10,6),today),null);
+ assert.equal(solarForDate(solar,states,new Date(2026,9,30),today),null);
+ states[forecasts[4]]=sensor('unavailable','kWh');assert.equal(solarForDate(solar,states,new Date(2026,10,4),today).forecast.value,'—');
+ const before={connected:true,states};assert.equal(solarStatesChanged(solar,before,{...before,states:{...states,[forecasts[5]]:sensor(28,'kWh')}}),true);
+});
+test('daily forecast configuration validates each source and preserves the existing two-day format',()=>{
+ const forecasts=['sensor.day0','sensor.day1'];assert.deepEqual(normalizeConfig({...base(),solar:{forecasts}}).solar,{forecasts});
+ for(const forecasts of [[],null,'sensor.day0',['calendar.wrong'],['sensor.same','sensor.same']])assert.throws(()=>normalizeConfig({...base(),solar:{forecasts}}),/Hearthglance:/);
+});

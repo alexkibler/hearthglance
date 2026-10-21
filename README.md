@@ -14,7 +14,7 @@ Calendars, chores, shared lists, meals, recipes, and weather live together in a 
 - Phone home screen, calendar agenda, joined multi-day month bars, and a 1–3 day timeline with overlapping appointments.
 - Native event creation, editing, and deletion when supported by the calendar integration.
 - Per-person chores, shared lists, meal planning, and a recipe book backed by native to-do lists and calendars.
-- Solar generation within the weather forecast: today’s actual / forecast energy and tomorrow’s predicted energy, on wall and phone home screens.
+- Solar generation within the weather forecast: today’s actual / forecast energy and predicted energy for every available future day, on wall and phone home screens.
 - Optional recurring chore automation, daily weather forecast, dark appearance, and per-display filters.
 - A single bundled JavaScript file with no runtime libraries, external fonts, analytics, or direct third-party requests. Calendar integrations may themselves use cloud services.
 
@@ -98,11 +98,16 @@ Add the sensors you want to display on the home screen. No additional integratio
 ```yaml
 solar:
   today: sensor.solar_energy_today
-  forecast_today: sensor.solar_forecast_today
-  forecast_tomorrow: sensor.solar_forecast_tomorrow
+  forecasts: # Daily sensors in order: today, tomorrow, then each following day
+    - sensor.solar_forecast_today
+    - sensor.solar_forecast_tomorrow
+    - sensor.solar_forecast_day_2
+    - sensor.solar_forecast_day_3
+    - sensor.solar_forecast_day_4
+    - sensor.solar_forecast_day_5
 ```
 
-`today` must be **today’s measured generation**, not lifetime production or a forecast. `forecast_today` and `forecast_tomorrow` are optional daily forecast sensors, for example from Forecast.Solar or Solcast. Energy sensors may use Wh, kWh, or MWh. Values are displayed as kW/kWh with up to two decimal places. Missing, unavailable, or incompatible-unit readings show unavailable, never zero. Readings sit under the matching weather day. Today displays actual / forecast; tomorrow displays forecast only. Days beyond the available daily sensors have no solar reading. Omit any individual sensor you do not have, or omit `solar` to hide solar readings. The older `power` field remains accepted for configuration compatibility but is no longer displayed.
+`today` must be **today’s measured generation**, not lifetime production or a forecast. `forecasts` lists daily forecast sensor IDs, starting with today. A six-entry list covers today plus all five future weather days; sources can come from Open-Meteo Solar Forecast, Solcast, or another HA integration. The existing `forecast_today` and `forecast_tomorrow` fields remain supported for shorter forecasts. Energy sensors may use Wh, kWh, or MWh. Values are displayed as kW/kWh with up to two decimal places. Missing, unavailable, or incompatible-unit readings show unavailable, never zero. Readings sit under the matching weather day and display only kWh values. Today displays actual / forecast; future days display forecast only. Explanatory labels remain available to screen readers and on hover. Days beyond your provider’s available daily sensors have no solar reading. Omit any individual sensor you do not have, or omit `solar` to hide solar readings. The older `power` field remains accepted for configuration compatibility but is no longer displayed.
 
 ## Configuration reference
 
@@ -125,7 +130,7 @@ solar:
 | `lists` | No | Array of `{name, entity}` shared to-do lists |
 | `recipes` | No | Recipe Local To-do entity ID |
 | `weather` | No | Daily forecast weather entity |
-| `solar` | No | Object with optional `today`, `forecast_today`, and `forecast_tomorrow` sensor IDs; at least one is required when configured |
+| `solar` | No | Object with optional `today` sensor and `forecasts` daily sensor list, or the existing `forecast_today` / `forecast_tomorrow` sensor IDs; at least one is required when configured |
 | `storage_key` | No | Preference namespace; default is derived from configured calendars. Set differently for two dashboards using the same calendars |
 
 Filters, dark appearance, and phone schedule length are stored in the browser, scoped by `storage_key`. Events, tasks, and recipes are saved in Home Assistant through the current user's session and permissions. This card is not an access-control boundary. A wall display needs its own authenticated HA session; no credentials belong in card YAML.

@@ -3,7 +3,7 @@ const key=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${Str
 const day=n=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+n);return d;};
 const stamp=(n,h)=>{const d=day(n);d.setHours(h);return d.toISOString();};
 export const config={
- type:'custom:hearthglance-card',household:'Our family',storage_key:'fictional-demo',weather:'weather.home',default_calendar:'calendar.family',solar:{today:'sensor.solar_today',forecast_today:'sensor.solar_forecast_today',forecast_tomorrow:'sensor.solar_tomorrow'},
+ type:'custom:hearthglance-card',household:'Our family',storage_key:'fictional-demo',weather:'weather.home',default_calendar:'calendar.family',solar:{today:'sensor.solar_today',forecasts:['sensor.solar_forecast_today','sensor.solar_tomorrow',...Array.from({length:4},(_,i)=>`sensor.solar_forecast_day_${i+2}`)]},
  people:[
   {id:'family',name:'Family',color:'#527d59',pale:'#eaf2e7',todo:'todo.family_chores'},
   {id:'sam',name:'Sam',color:'#397f86',pale:'#e8f2f2',todo:'todo.sam_chores'},
@@ -48,7 +48,7 @@ export function createDemoHass(){
  };
  const notify=()=>{for(const s of subscriptions)s.callback(data(s.message));};
  const states=Object.fromEntries([...config.calendars.map(c=>c.entity),...Object.keys(todos)].map(id=>[id,{state:'on',attributes:{supported_features:7,friendly_name:id}}]));
- for(const [id,state,unit] of [['sensor.solar_power','4.42','kW'],['sensor.solar_today','18.6','kWh'],['sensor.solar_forecast_today','32.8','kWh'],['sensor.solar_tomorrow','35.2','kWh']])states[id]={state,attributes:{unit_of_measurement:unit}};
+ for(const [id,state,unit] of [['sensor.solar_power','4.42','kW'],['sensor.solar_today','18.6','kWh'],['sensor.solar_forecast_today','32.8','kWh'],['sensor.solar_tomorrow','35.2','kWh'],['sensor.solar_forecast_day_2','28.4','kWh'],['sensor.solar_forecast_day_3','22.6','kWh'],['sensor.solar_forecast_day_4','36.8','kWh'],['sensor.solar_forecast_day_5','31.5','kWh']])states[id]={state,attributes:{unit_of_measurement:unit}};
  states['weather.home']={state:'partlycloudy',attributes:{temperature:22,temperature_unit:'°C'}};
  return {
   connected:true,states,

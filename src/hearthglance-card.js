@@ -137,7 +137,7 @@ class HearthglanceCard extends HTMLElement {
   if(!reading)return '';
   const {actual,forecast}=reading,label=actual&&forecast?'Solar actual / forecast':actual?'Solar actual':'Solar forecast';
   const value=[actual,forecast].filter(Boolean).map(r=>r.value).join(' / ');
-  return `<span class="weather-solar" aria-label="${esc(label+': '+value+' kWh')}"><small>${label}</small><b>${esc(value)}<span class="solar-unit">kWh</span></b></span>`;
+  return `<span class="weather-solar" title="${esc(label)}" aria-label="${esc(label+': '+value+' kWh')}"><b>${esc(value)}<span class="solar-unit">kWh</span></b></span>`;
  }
  _weatherHTML(){
   if(!this._hass||!this._config.weather&&!this._config.solar)return '';
@@ -145,7 +145,7 @@ class HearthglanceCard extends HTMLElement {
   const condition=available?weather.state.replaceAll('-',' ').replace('partlycloudy','Partly cloudy'):'';
   const today=new Date(),solar=this._solarDayHTML(today);
   let future=this._forecast.filter(f=>dateKey(localDate(f.datetime))>dateKey(today)).slice(0,5);
-  if(!future.length&&this._config.solar?.forecast_tomorrow)future=[{datetime:addDays(today,1).toISOString()}];
+  if(!future.length&&(this._config.solar?.forecast_tomorrow||this._config.solar?.forecasts?.length>1))future=[{datetime:addDays(today,1).toISOString()}];
   return `<div class="weather-now">${available?`<span class="weather-icon">${weatherGlyph(weather.state)}</span>`:''}<div><div class="weather-temp">${available?`${Math.round(weather.attributes.temperature)}°<small>${esc((weather.attributes.temperature_unit||'F').replace('°',''))}</small>`:'Today'}</div><div class="weather-label">${available?'Today · '+esc(condition[0].toUpperCase()+condition.slice(1)):this._config.weather?'Weather unavailable':''}</div>${solar}</div></div><div class="forecast">${future.map(f=>`<div class="forecast-day">${format(localDate(f.datetime),{weekday:'short'})}${f.condition?`<span class="weather-icon">${weatherGlyph(f.condition)}</span><b>${Math.round(f.temperature)}° <span style="color:var(--muted)">${f.templow==null?'':Math.round(f.templow)+'°'}</span></b>`:''}${this._solarDayHTML(localDate(f.datetime))}</div>`).join('')}</div>`;
  }
  _renderWeather(){

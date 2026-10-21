@@ -11,8 +11,13 @@ views:
         weather: weather.home
         solar:
           today: sensor.solar_energy_today
-          forecast_today: sensor.solar_forecast_today
-          forecast_tomorrow: sensor.solar_forecast_tomorrow
+          forecasts:
+            - sensor.solar_forecast_today
+            - sensor.solar_forecast_tomorrow
+            - sensor.solar_forecast_day_2
+            - sensor.solar_forecast_day_3
+            - sensor.solar_forecast_day_4
+            - sensor.solar_forecast_day_5
         default_calendar: calendar.family
         people:
           - id: family

@@ -23,3 +23,7 @@ Checked on 2026-10-21: all 26 tests pass with separate actual/today-forecast/tom
 ## 0.2.2 weather and solar
 
 Checked on 2026-10-21: all 27 tests pass, including date matching across year boundaries, actual/forecast pairing, zero and offline values, and omitting future solar data outside the available sensors. The combined weather strip was checked at 1280 × 800 and phone widths of 390 and 320 pixels. Public screenshots contain fictional values only.
+
+## 0.3.0 daily solar forecasts
+
+Checked on 2026-10-21: all 29 tests pass, including six distinct daily forecasts across DST, existing two-day configuration compatibility, unavailable values, and nested forecast sensor updates. Fictional browser previews were checked at 1280 × 800 and 390 × 844. The phone strip contains all six daily values and scrolls horizontally. Visible solar labels were removed; accessible and hover descriptions remain.
