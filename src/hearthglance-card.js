@@ -1,4 +1,4 @@
-import {solarReadings, solarStatesChanged, solarStyles} from './solar.js';
+import {solarForDate, solarStatesChanged, solarStyles} from './solar.js';
 import {normalizeConfig, enabledPages} from './config.js';
 import {styles} from './styles.js';
 import {mobileStyles} from './mobile-styles.js';
@@ -132,12 +132,24 @@ class HearthglanceCard extends HTMLElement {
   const connected=this._hass?.connected!==false;el.classList.toggle('offline',!connected);
   el.querySelector('.connection-label').textContent=connected?'Connected to home':'Reconnecting…';
  }
+ _solarDayHTML(date){
+  const reading=solarForDate(this._config.solar,this._hass?.states,date,new Date(),this._hass?.connected);
+  if(!reading)return '';
+  const {actual,forecast}=reading,label=actual&&forecast?'Solar actual / forecast':actual?'Solar actual':'Solar forecast';
+  const value=[actual,forecast].filter(Boolean).map(r=>r.value).join(' / ');
+  return `<span class="weather-solar" aria-label="${esc(label+': '+value+' kWh')}"><small>${label}</small><b>${esc(value)}<span class="solar-unit">kWh</span></b></span>`;
+ }
+ _weatherHTML(){
+  if(!this._hass||!this._config.weather&&!this._config.solar)return '';
+  const weather=this._hass.states[this._config.weather],available=weather&&!['unknown','unavailable'].includes(weather.state);
+  const condition=available?weather.state.replaceAll('-',' ').replace('partlycloudy','Partly cloudy'):'';
+  const today=new Date(),solar=this._solarDayHTML(today);
+  let future=this._forecast.filter(f=>dateKey(localDate(f.datetime))>dateKey(today)).slice(0,5);
+  if(!future.length&&this._config.solar?.forecast_tomorrow)future=[{datetime:addDays(today,1).toISOString()}];
+  return `<div class="weather-now">${available?`<span class="weather-icon">${weatherGlyph(weather.state)}</span>`:''}<div><div class="weather-temp">${available?`${Math.round(weather.attributes.temperature)}°<small>${esc((weather.attributes.temperature_unit||'F').replace('°',''))}</small>`:'Today'}</div><div class="weather-label">${available?'Today · '+esc(condition[0].toUpperCase()+condition.slice(1)):this._config.weather?'Weather unavailable':''}</div>${solar}</div></div><div class="forecast">${future.map(f=>`<div class="forecast-day">${format(localDate(f.datetime),{weekday:'short'})}${f.condition?`<span class="weather-icon">${weatherGlyph(f.condition)}</span><b>${Math.round(f.temperature)}° <span style="color:var(--muted)">${f.templow==null?'':Math.round(f.templow)+'°'}</span></b>`:''}${this._solarDayHTML(localDate(f.datetime))}</div>`).join('')}</div>`;
+ }
  _renderWeather(){
-  const el=this.shadowRoot.querySelector('.weather');if(!el||!this._hass)return;
-  if(!this._config.weather){el.innerHTML='';return;}
-  const weather=this._hass.states[this._config.weather];if(!weather||['unknown','unavailable'].includes(weather.state)){el.textContent='Weather unavailable';return;}
-  const condition=weather.state.replaceAll('-',' ').replace('partlycloudy','Partly cloudy');
-  el.innerHTML=`<div class="weather-now"><span class="weather-icon">${weatherGlyph(weather.state)}</span><div><div class="weather-temp">${Math.round(weather.attributes.temperature)}°<small>${esc((weather.attributes.temperature_unit||'F').replace('°',''))}</small></div><div class="weather-label">${esc(condition[0].toUpperCase()+condition.slice(1))}</div></div></div><div class="forecast">${this._forecast.filter(f=>dateKey(localDate(f.datetime))>dateKey(new Date())).slice(0,5).map(f=>`<div class="forecast-day">${format(localDate(f.datetime),{weekday:'short'})}<span class="weather-icon">${weatherGlyph(f.condition)}</span><b>${Math.round(f.temperature)}° <span style="color:var(--muted)">${f.templow==null?'':Math.round(f.templow)+'°'}</span></b></div>`).join('')}</div>`;
+  for(const el of this.shadowRoot.querySelectorAll('.weather, .phone-weather-strip'))el.innerHTML=this._weatherHTML();
  }
  _visibleEvents(today=false){
   let data=this._events;
@@ -159,8 +171,7 @@ class HearthglanceCard extends HTMLElement {
   const titles={home:['YOUR FAMILY, AT A GLANCE','A little more together.','The week ahead, and what matters today.'],calendar:['THE FAMILY SCHEDULE','Calendar','One place for everyone’s plans.'],tasks:['SMALL THINGS, SHARED','Chores & routines','A little teamwork goes a long way.'],list:['LESS TO REMEMBER','Shared lists','For the things you need, and the things to do.'],meals:['AROUND THE TABLE','Meal planner','Good food. One less decision.'],recipes:['FAMILY FAVORITES','Recipes','Your family favorites, ready for the week.']};
   const [eyebrow,title,subtitle]=titles[this._page];
   const primary=this._page==='recipes'?['Add recipe','add-recipe']:this._page==='tasks'?['Add chore','add-task']:this._page==='list'?['Add item','add-list-item']:this._page==='meals'?['Plan a meal','add-meal']:['Add event','add-event'];
-  const solar=this._page==='home'?this._solarHTML():'';
-  main.innerHTML=`<div class="page-head ${solar?'with-solar':''}"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div>${solar}<div class="head-actions">${button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"')}${button(icon('plus')+primary[0],primary[1],'btn primary')}</div></div>${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._mealsPage()}`;
+  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div><div class="head-actions">${button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"')}${button(icon('plus')+primary[0],primary[1],'btn primary')}</div></div>${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._mealsPage()}`;
   main.scrollTop=scroll;
  }
  _profiles(){return `<div class="profiles" aria-label="Family filters">${this._config.people.map(p=>button(`<span class="avatar">${esc(p.initial)}</span>${esc(p.name)}`,'filter',`profile ${this._hidden.has(p.id)?'off':''}`,`data-person="${p.id}" style="${personStyle(p)}" aria-pressed="${!this._hidden.has(p.id)}"`)).join('')}${button('Other calendars','other-calendars','text-link')}</div>`;}
@@ -212,18 +223,7 @@ class HearthglanceCard extends HTMLElement {
   const done=entries.filter(x=>x.item.status==='completed').length;
   return `<section class="panel"><div class="panel-head"><h2>A little teamwork</h2><span class="count">${done}/${entries.length} done</span></div>${entries.filter(x=>x.item.status!=='completed').slice(0,3).map(({person,item})=>this._taskRows(person.todo,[item],true)).join('')||`<div class="empty">${icon('check')}${entries.length?'All caught up. Nice teamwork!':'No chores for today.'}</div>`}${button('View all chores →','go-tasks','text-link')}</section>`;
  }
- _solarValueHTML(reading){return `<strong class="solar-number">${esc(reading.value)}</strong>${reading.unit?`<span class="solar-unit">${esc(reading.unit)}</span>`:`<span class="solar-status">${esc(reading.status)}</span>`}`;}
- _solarHTML(){
-  const readings=solarReadings(this._config.solar,this._hass?.states,this._hass?.connected);
-  if(!readings.length)return '';
-  return `<section class="solar-panel" aria-label="Solar generation"><a class="solar-link" href="/energy" aria-label="Open Home Assistant Energy dashboard" title="Solar generation details">${icon('sun')}</a><dl class="solar-metrics" style="--solar-count:${readings.length}">${readings.map(r=>`<div class="solar-metric"><dt>${esc(r.label)}</dt><dd data-solar-value="${r.key}">${this._solarValueHTML(r)}</dd></div>`).join('')}</dl></section>`;
- }
- _renderSolar(){
-  for(const reading of solarReadings(this._config.solar,this._hass?.states,this._hass?.connected)){
-   const value=this.shadowRoot.querySelector(`[data-solar-value="${reading.key}"]`);
-   if(value)value.innerHTML=this._solarValueHTML(reading);
-  }
- }
+ _renderSolar(){this._renderWeather();}
  _groceryHTML(){if(!this._config.lists.length)return '';const list=this._config.lists[0],items=(this._tasks[list.entity]||[]).filter(i=>i.status!=='completed');return `<section class="panel"><div class="panel-head"><h2>${esc(list.name)}</h2><span class="count">${items.length} ${items.length===1?'item':'items'}</span></div>${this._taskRows(list.entity,items.slice(0,3),true)||`<div class="empty">The list is clear.<br>Add something before you forget.</div>`}${button('+ Add to list','quick-grocery','text-link')}</section>`;}
  _choresPage(){
   return `<div class="filters-row">${this._profiles()}<span class="section-note">Tap a check to complete. Recurring chores return when due.</span></div><div class="person-grid">${this._config.people.filter(p=>p.todo&&!this._hidden.has(p.id)).map(p=>{

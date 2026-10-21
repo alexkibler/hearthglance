@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Integrate solar energy into the weather forecast on wall and phone views.
+- Today shows actual / forecast energy; tomorrow shows forecast only. Later days are left blank when no solar forecast exists.
+- Remove the separate solar row and current-power readout.
+
 ## 0.2.1
 
 - Compact solar readings alongside the home heading, with more space for the calendar.

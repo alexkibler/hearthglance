@@ -19,3 +19,7 @@ Checked on 2026-10-21: 26 automated tests passed, including actual-versus-foreca
 ## 0.2.1 compact solar header
 
 Checked on 2026-10-21: all 26 tests pass with separate actual/today-forecast/tomorrow-forecast readings. The compact heading layout was previewed at 1280 × 800 and phone widths of 390 and 320 pixels. Generic previews were updated.
+
+## 0.2.2 weather and solar
+
+Checked on 2026-10-21: all 27 tests pass, including date matching across year boundaries, actual/forecast pairing, zero and offline values, and omitting future solar data outside the available sensors. The combined weather strip was checked at 1280 × 800 and phone widths of 390 and 320 pixels. Public screenshots contain fictional values only.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {solarReadings, solarStatesChanged} from '../src/solar.js';
+import {solarReadings, solarStatesChanged, solarForDate} from '../src/solar.js';
 import {normalizeConfig} from '../src/config.js';
 const sensor=(value,unit)=>({state:String(value),attributes:{unit_of_measurement:unit}});
 const config={power:'sensor.solar_power',today:'sensor.solar_today',forecast_today:'sensor.solar_forecast_today',forecast_tomorrow:'sensor.solar_tomorrow'};
@@ -30,4 +30,18 @@ test('solar updates only when a configured entity or connection status changes',
  assert.equal(solarStatesChanged(config,before,{connected:true,states:{[config.power]:sensor(5,'kW')}}),true);
  assert.equal(solarStatesChanged(config,before,{...before,connected:false}),true);
  assert.equal(solarStatesChanged(undefined,before,before),false);
+});
+
+test('weather pairs actual and forecast today, shows only forecast tomorrow, and omits other dates',()=>{
+ const today=new Date(2026,11,31),states={
+  [config.today]:sensor(0,'kWh'),[config.forecast_today]:sensor(20,'kWh'),[config.forecast_tomorrow]:sensor(30,'kWh'),
+ };
+ const now=solarForDate(config,states,today,today);
+ assert.equal(now.actual.value,'0');assert.equal(now.forecast.value,'20');
+ const tomorrow=solarForDate(config,states,new Date(2027,0,1),today);
+ assert.equal(tomorrow.actual,undefined);assert.equal(tomorrow.forecast.value,'30');
+ assert.equal(solarForDate(config,states,new Date(2027,0,2),today),null);
+ assert.equal(solarForDate(config,states,new Date(2026,11,30),today),null);
+ assert.equal(solarForDate(undefined,states,today,today),null);
+ assert.equal(solarForDate(config,states,today,today,false).actual.status,'Offline');
 });

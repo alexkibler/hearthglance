@@ -14,7 +14,7 @@ Calendars, chores, shared lists, meals, recipes, and weather live together in a 
 - Phone home screen, calendar agenda, joined multi-day month bars, and a 1–3 day timeline with overlapping appointments.
 - Native event creation, editing, and deletion when supported by the calendar integration.
 - Per-person chores, shared lists, meal planning, and a recipe book backed by native to-do lists and calendars.
-- Optional solar generation panel with current power, today’s measured energy, and today/tomorrow forecasts, on wall and phone home screens.
+- Solar generation within the weather forecast: today’s actual / forecast energy and tomorrow’s predicted energy, on wall and phone home screens.
 - Optional recurring chore automation, daily weather forecast, dark appearance, and per-display filters.
 - A single bundled JavaScript file with no runtime libraries, external fonts, analytics, or direct third-party requests. Calendar integrations may themselves use cloud services.
 
@@ -89,21 +89,20 @@ The automation runs at 00:05 and on HA startup. A completed chore remains comple
 
 ## Solar generation
 
-![Solar panel with fictional demo data](docs/images/solar-wall.jpg)
+![Weather forecast with fictional solar data](docs/images/solar-wall.jpg)
 
-<img src="docs/images/solar-phone.jpg" alt="Phone solar panel with fictional demo data" width="300">
+<img src="docs/images/solar-phone.jpg" alt="Phone weather forecast with fictional solar data" width="300">
 
 Add the sensors you want to display on the home screen. No additional integration or API key is needed by Hearthglance. These values update through the normal HA frontend connection.
 
 ```yaml
 solar:
-  power: sensor.solar_power
   today: sensor.solar_energy_today
   forecast_today: sensor.solar_forecast_today
   forecast_tomorrow: sensor.solar_forecast_tomorrow
 ```
 
-`power` must be measured production in W, kW, or MW. `today` must be **today’s measured generation**, not lifetime production or a forecast. `forecast_today` and `forecast_tomorrow` are optional daily forecast sensors, for example from Forecast.Solar or Solcast. Energy sensors may use Wh, kWh, or MWh. Values are displayed as kW/kWh with up to two decimal places. Missing, unavailable, or incompatible-unit readings show unavailable, never zero. The sun icon opens HA’s Energy dashboard. Omit any individual sensor you do not have, or omit `solar` to hide the panel.
+`today` must be **today’s measured generation**, not lifetime production or a forecast. `forecast_today` and `forecast_tomorrow` are optional daily forecast sensors, for example from Forecast.Solar or Solcast. Energy sensors may use Wh, kWh, or MWh. Values are displayed as kW/kWh with up to two decimal places. Missing, unavailable, or incompatible-unit readings show unavailable, never zero. Readings sit under the matching weather day. Today displays actual / forecast; tomorrow displays forecast only. Days beyond the available daily sensors have no solar reading. Omit any individual sensor you do not have, or omit `solar` to hide solar readings. The older `power` field remains accepted for configuration compatibility but is no longer displayed.
 
 ## Configuration reference
 
@@ -126,7 +125,7 @@ solar:
 | `lists` | No | Array of `{name, entity}` shared to-do lists |
 | `recipes` | No | Recipe Local To-do entity ID |
 | `weather` | No | Daily forecast weather entity |
-| `solar` | No | Object with optional `power`, `today`, `forecast_today`, and `forecast_tomorrow` sensor IDs; at least one is required when configured |
+| `solar` | No | Object with optional `today`, `forecast_today`, and `forecast_tomorrow` sensor IDs; at least one is required when configured |
 | `storage_key` | No | Preference namespace; default is derived from configured calendars. Set differently for two dashboards using the same calendars |
 
 Filters, dark appearance, and phone schedule length are stored in the browser, scoped by `storage_key`. Events, tasks, and recipes are saved in Home Assistant through the current user's session and permissions. This card is not an access-control boundary. A wall display needs its own authenticated HA session; no credentials belong in card YAML.

@@ -3,7 +3,7 @@ const key=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${Str
 const day=n=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+n);return d;};
 const stamp=(n,h)=>{const d=day(n);d.setHours(h);return d.toISOString();};
 export const config={
- type:'custom:hearthglance-card',household:'Our family',storage_key:'fictional-demo',weather:'weather.home',default_calendar:'calendar.family',solar:{power:'sensor.solar_power',today:'sensor.solar_today',forecast_today:'sensor.solar_forecast_today',forecast_tomorrow:'sensor.solar_tomorrow'},
+ type:'custom:hearthglance-card',household:'Our family',storage_key:'fictional-demo',weather:'weather.home',default_calendar:'calendar.family',solar:{today:'sensor.solar_today',forecast_today:'sensor.solar_forecast_today',forecast_tomorrow:'sensor.solar_tomorrow'},
  people:[
   {id:'family',name:'Family',color:'#527d59',pale:'#eaf2e7',todo:'todo.family_chores'},
   {id:'sam',name:'Sam',color:'#397f86',pale:'#e8f2f2',todo:'todo.sam_chores'},

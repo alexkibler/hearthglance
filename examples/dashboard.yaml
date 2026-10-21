@@ -10,7 +10,6 @@ views:
         household: Our family
         weather: weather.home
         solar:
-          power: sensor.solar_power
           today: sensor.solar_energy_today
           forecast_today: sensor.solar_forecast_today
           forecast_tomorrow: sensor.solar_forecast_tomorrow
