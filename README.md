@@ -89,9 +89,9 @@ The automation runs at 00:05 and on HA startup. A completed chore remains comple
 
 ## Solar generation
 
-![Solar panel with fictional demo data](docs/images/solar-wall.png)
+![Solar panel with fictional demo data](docs/images/solar-wall.jpg)
 
-<img src="docs/images/solar-phone.png" alt="Phone solar panel with fictional demo data" width="300">
+<img src="docs/images/solar-phone.jpg" alt="Phone solar panel with fictional demo data" width="300">
 
 Add the sensors you want to display on the home screen. No additional integration or API key is needed by Hearthglance. These values update through the normal HA frontend connection.
 
