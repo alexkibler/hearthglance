@@ -35,3 +35,7 @@ Checked on 2026-10-21: all 29 existing tests pass. The Home Assistant icon and O
 ## 0.3.2 theme contrast
 
 Checked on 2026-10-21: all 29 existing tests pass and the release bundle builds. The bundled fictional wall preview was checked in dark appearance; the Home Assistant icon uses the same light green accent as the navigation. Removed the conflicting dark brand foreground override.
+
+## 0.4.0 native recipes
+
+Checked on 2026-10-21: 34 JavaScript tests, six fictional importer tests and four backend tests in Home Assistant 2026.10.2 passed. The importer preserves complete source records, handles UUID and URL IDs and generates JPEG/HEIC previews. Real HA Store persistence, duplicate imports, revision conflicts, count-only entity attributes, permissions, image access and path restrictions were checked. Native gallery search, recipe details and meal planning were previewed in wall and phone layouts. A private live import was compared to its source metadata and photos; authenticated image routes returned JPEGs while unsigned access returned 401. Private export data is excluded from source and release archives.

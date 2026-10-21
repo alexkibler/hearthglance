@@ -2,7 +2,7 @@
 
 A family dashboard for Home Assistant, built for a wall touchscreen and comfortable on a phone.
 
-Calendars, chores, shared lists, meals, recipes, and weather live together in a single native dashboard card. Your existing Home Assistant calendar and to-do integrations hold the data. No separate server, account, or subscription is needed.
+Calendars, chores, shared lists, meals, recipes, and weather live together in a single native dashboard card. Home Assistant calendar and to-do integrations hold scheduling and list data; the optional Hearthglance Recipes integration owns structured recipes and photos. No separate server, account, or subscription is needed.
 
 ![Wall dashboard with fictional demo data](docs/images/solar-wall.jpg)
 
@@ -45,7 +45,11 @@ HACS's default catalog is a separate submission process; install this project as
 
 ## Manual installation
 
-Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.3.2` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.4.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+
+## Native recipe library
+
+The optional [Hearthglance Recipes integration](docs/recipes.md) adds structured recipe records, photos, search, categories, nutrition and a one-time Mela import. Install its companion release ZIP separately from the HACS frontend card.
 
 ## Start small
 
@@ -67,14 +71,15 @@ See [the full dashboard example](examples/dashboard.yaml) for multiple people an
 
 ## Add the other features
 
-Create entities through **Settings → Devices & services → Add integration**. Use **Local Calendar** for writable family calendars and the meal calendar, and **Local To-do** for chores, shared lists, and recipes. Existing read-only calendars work for viewing; native integration capabilities determine whether you can add, edit, or delete events. Existing external calendar subscriptions stay managed by their source integration.
+Create entities through **Settings → Devices & services → Add integration**. Use **Local Calendar** for writable family calendars and the meal calendar, and **Local To-do** for chores, shared lists, and legacy recipes. Existing read-only calendars work for viewing; native integration capabilities determine whether you can add, edit, or delete events. Existing external calendar subscriptions stay managed by their source integration.
 
 | Feature | Configuration | Entity/setup |
 | --- | --- | --- |
 | Chores | `people[].todo` | A separate Local To-do list per participating profile |
 | Shared lists | `lists: [{name, entity}]` | One or more Local To-do lists; the first appears on the wall home screen |
 | Meals | A calendar with `kind: meals` | A separate Local Calendar; meal slot and recipe link are stored in event descriptions |
-| Recipes | `recipes: todo.recipes` | A separate Local To-do list; ingredients, instructions, and source URL live in descriptions |
+| Recipes | `recipes: sensor.hearthglance_recipes` | Optional native recipe library with Mela import, photos and complete metadata; [setup](docs/recipes.md) |
+| Legacy recipes | `recipes: todo.recipes` | Existing Local To-do recipe lists remain supported |
 | Weather | `weather: weather.home` | A weather entity with a daily forecast |
 | Recurring chores | Optional blueprint below | Select the same Local To-do entities used by profiles |
 
@@ -132,7 +137,7 @@ solar:
 | `household` | No | Phone home title; defaults to `Our family` |
 | `default_calendar` | No | Configured regular calendar preferred when adding events; otherwise first writable calendar |
 | `lists` | No | Array of `{name, entity}` shared to-do lists |
-| `recipes` | No | Recipe Local To-do entity ID |
+| `recipes` | No | Native recipe-library sensor or legacy Local To-do entity ID |
 | `weather` | No | Daily forecast weather entity |
 | `solar` | No | Object with optional `today` sensor and `forecasts` daily sensor list, or the existing `forecast_today` / `forecast_tomorrow` sensor IDs; at least one is required when configured |
 | `storage_key` | No | Preference namespace; default is derived from configured calendars. Set differently for two dashboards using the same calendars |

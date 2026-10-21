@@ -15,7 +15,7 @@ export const config={
   {entity:'calendar.riley',name:'Riley',person:'riley'},
   {entity:'calendar.meals',name:'Meal plan',person:'family',kind:'meals'},
  ],
- lists:[{name:'Groceries',entity:'todo.groceries'},{name:'Things to do',entity:'todo.things_to_do'}],recipes:'todo.recipes',
+ lists:[{name:'Groceries',entity:'todo.groceries'},{name:'Things to do',entity:'todo.things_to_do'}],recipes:'sensor.hearthglance_recipes',
 };
 export function createDemoHass(){
  let next=100;
@@ -40,8 +40,10 @@ export function createDemoHass(){
   'todo.things_to_do':[task('t1','Plan the weekend picnic')],
   'todo.recipes':[task('recipe-1','Roasted vegetable pasta',{description:JSON.stringify({ingredients:'Pasta\nSeasonal vegetables\nOlive oil',instructions:'Roast vegetables, cook pasta, and toss together.',source:''})})],
  };
+ let recipes=[{id:'recipe-1',title:'Roasted vegetable pasta',ingredients:'Pasta\nSeasonal vegetables\nOlive oil',instructions:'Roast vegetables, cook pasta, and toss together.',categories:['Dinner','Meatless'],favorite:true,wantToCook:false,yield:'4 servings',prepTime:'10min',cookTime:'20min',totalTime:'30min',notes:'Serve with a green salad.',nutrition:'A fictional nutrition note.',revision:1,images:[]},{id:'recipe-2',title:'Apple oatmeal',ingredients:'Oats\nApples\nMilk',instructions:'Simmer oats with milk and top with chopped apples.',categories:['Breakfast'],yield:'2 servings',totalTime:'15min',revision:1,images:[]}];
  const subscriptions=new Set();
  const data=message=>{
+  if(message.type==='hearthglance_recipes/subscribe')return {recipes:structuredClone(recipes),total:recipes.length};
   if(message.type==='todo/item/subscribe')return {items:structuredClone(todos[message.entity_id]||[])};
   if(message.type==='weather/subscribe_forecast')return {forecast:Array.from({length:7},(_,n)=>({datetime:day(n).toISOString(),condition:n%3?'sunny':'partlycloudy',temperature:21+n%4,templow:12+n%3}))};
   return {events:structuredClone((calendars[message.entity_id]||[]).filter(e=>new Date(e.start)<new Date(message.end)&&new Date(e.end)>new Date(message.start)))};
@@ -55,6 +57,11 @@ export function createDemoHass(){
   connection:{async subscribeMessage(callback,message){const entry={callback,message};subscriptions.add(entry);queueMicrotask(()=>{if(subscriptions.has(entry))callback(data(message));});return ()=>subscriptions.delete(entry);}},
   async callApi(method,path){const [resource,query]=path.split('?'),params=new URLSearchParams(query);return data({type:'calendar/event/subscribe',entity_id:resource.split('/')[1],start:params.get('start'),end:params.get('end')}).events;},
   async callWS(command){
+   if(command.type.startsWith('hearthglance_recipes/')){
+    if(command.type.endsWith('/save')){const old=recipes.find(r=>r.id===command.recipe_id);if(old){if(old.revision!==command.revision)throw new Error('Recipe changed');Object.assign(old,command.recipe,{revision:old.revision+1});}else recipes.push({id:`recipe-${next++}`,revision:1,images:[],...command.recipe});}
+    if(command.type.endsWith('/delete'))recipes=recipes.filter(r=>r.id!==command.recipe_id);
+    notify();return {recipes:structuredClone(recipes),total:recipes.length};
+   }
    const rows=calendars[command.entity_id]||[];
    if(command.type==='calendar/event/delete')calendars[command.entity_id]=rows.filter(e=>e.uid!==command.uid);
    else{const payload={...command.event,start:command.event.dtstart,end:command.event.dtend};const old=rows.find(e=>e.uid===command.uid);if(old)Object.assign(old,payload);else rows.push({uid:`event-${next++}`,...payload});}

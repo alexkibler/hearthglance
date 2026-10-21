@@ -39,8 +39,8 @@ export function normalizeConfig(raw) {
   });
   distinct(calendars.map(c => c.entity), 'calendar entities');
   const lists = array(raw.lists, 'lists').map((l, i) => ({entity: entity(l.entity, 'todo', `lists[${i}].entity`), name: String(l.name || 'Shared list')}));
-  const recipes = entity(raw.recipes, 'todo', 'recipes', true);
-  distinct([...people.map(p => p.todo), ...lists.map(l => l.entity), recipes].filter(Boolean), 'to-do entities across people, lists, and recipes');
+  const recipes = raw.recipes?.startsWith?.('sensor.') ? entity(raw.recipes, 'sensor', 'recipes') : entity(raw.recipes, 'todo', 'recipes', true);
+  distinct([...people.map(p => p.todo), ...lists.map(l => l.entity), recipes?.startsWith('todo.') ? recipes : undefined].filter(Boolean), 'to-do entities across people, lists, and recipes');
   let solar;
   if (raw.solar != null) {
     if (typeof raw.solar !== 'object' || Array.isArray(raw.solar)) throw new Error('Hearthglance: solar must be an object of sensor entity IDs.');

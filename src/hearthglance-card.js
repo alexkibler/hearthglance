@@ -1,5 +1,6 @@
 import {solarForDate, solarStatesChanged, solarStyles} from './solar.js';
 import {normalizeConfig, enabledPages} from './config.js';
+import {recipeMethods,recipeStyles} from './recipes.js';
 import {styles} from './styles.js';
 import {mobileStyles} from './mobile-styles.js';
 import {mobileMethods} from './mobile.js';
@@ -36,12 +37,13 @@ class HearthglanceCard extends HTMLElement {
   this.shadowRoot.addEventListener('click',e=>this._click(e));
   this.shadowRoot.addEventListener('submit',e=>this._submit(e));
   this.shadowRoot.addEventListener('change',e=>this._change(e));
+  this.shadowRoot.addEventListener('input',e=>this._recipeInput(e));
   this.shadowRoot.addEventListener('keydown',e=>{if(e.key==='Escape'&&!this._busy)this._closeModal();});
  }
  setConfig(config){
   const normalized=normalizeConfig(config);
   this._stop();this._config=normalized;this._pages=enabledPages(normalized);this._page='home';this._list=0;
-  this._events={};this._tasks={};this._errors.clear();this._forecast=[];
+  this._events={};this._tasks={};this._recipes=[];this._recipeQuery='';this._recipeCategory='';this._recipeFavorites=false;this._errors.clear();this._forecast=[];
   this._storageKey='hearthglance:'+normalized.storage_key;
   try{const prefs=JSON.parse(localStorage.getItem(this._storageKey)||'{}');this._prefs=prefs&&typeof prefs==='object'&&!Array.isArray(prefs)?prefs:{};}catch{this._prefs={};}
   this._hidden=new Set(Array.isArray(this._prefs.hidden)?this._prefs.hidden.filter(id=>typeof id==='string'):[]);
@@ -70,13 +72,15 @@ class HearthglanceCard extends HTMLElement {
   if(this._started||!this._active||!this._hass||!this._config)return;
   const session=this._sessionGeneration;this._started=true;this._today=dateKey(new Date());this._updateClock();
   this._clockTimer=setInterval(()=>{this._updateClock();if(this._today!==dateKey(new Date())){this._today=dateKey(new Date());this._date=new Date();this._loadCalendars();}},30000);
-  const entities=[...new Set([...this._config.people.map(p=>p.todo),...this._config.lists.map(l=>l.entity),this._config.recipes].filter(Boolean))];
+  const entities=[...new Set([...this._config.people.map(p=>p.todo),...this._config.lists.map(l=>l.entity),this._config.recipes?.startsWith('todo.')?this._config.recipes:undefined].filter(Boolean))];
   for(const entity of entities){
    try{
     const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._tasks[entity]=message.items||[];this._errors.delete(entity);this._renderMain();},{type:'todo/item/subscribe',entity_id:entity});
     if(!this._started||session!==this._sessionGeneration){unsub();return;}this._unsubs.push(unsub);
    }catch(error){if(session!==this._sessionGeneration)return;this._errors.set(entity,'A task list is unavailable. Try Refresh.');}
   }
+  await this._startRecipes(session);
+  if(session!==this._sessionGeneration)return;
   if(this._config.weather)try{
    const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._forecast=message.forecast||[];this._renderWeather();this._renderMain();},{type:'weather/subscribe_forecast',entity_id:this._config.weather,forecast_type:'daily'});
    if(this._started&&session===this._sessionGeneration)this._unsubs.push(unsub);else unsub();
@@ -118,7 +122,7 @@ class HearthglanceCard extends HTMLElement {
  _savePrefs(){this._prefs.hidden=[...this._hidden];try{localStorage.setItem(this._storageKey,JSON.stringify(this._prefs));}catch{}}
  _renderShell(){
   if(!this._config)return;
-  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><a class="brand ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">${icon('ha')}</a>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}</div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
+  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><a class="brand ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">${icon('ha')}</a>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}</div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
   this._updateClock();this._renderWeather();this._renderMain();
  }
  _updateClock(){
@@ -234,7 +238,7 @@ class HearthglanceCard extends HTMLElement {
  _listsPage(){const list=this._config.lists[this._list],items=this._tasks[list.entity]||[],pending=items.filter(i=>i.status!=='completed'),done=items.filter(i=>i.status==='completed');return `<div class="lists-layout"><nav class="list-nav" aria-label="Shared lists">${this._config.lists.map((l,i)=>button(`${icon('list')}<span>${esc(l.name)}</span><small>${(this._tasks[l.entity]||[]).filter(x=>x.status!=='completed').length}</small>`,'select-list',`list-tab ${i===this._list?'active':''}`,`data-list="${i}"`)).join('')}</nav><section class="panel list-items"><div class="panel-head"><h2>${esc(list.name)}</h2><span class="count">${pending.length} remaining</span></div>${this._taskRows(list.entity,pending)||'<div class="empty">All clear. Add something to get started.</div>'}${button('+ Add an item','add-list-item','text-link')}${done.length?`<div class="completed-label">Completed (${done.length})</div>${this._taskRows(list.entity,done)}`:''}</section></div>`;}
  _mealsPage(){
   const range=rangeFor('week',this._date),events=Object.values(this._events).flat().filter(e=>e.calendar.kind==='meals');
-  const recipes=this._tasks[this._config.recipes]||[];
+  const recipes=this._recipeItems();
   return `<div class="meal-layout"><section class="calendar" aria-label="Weekly meal planner">${this._toolbar('week')}<div class="meal-week">${range.days.map(date=>`<section class="meal-day ${dateKey(date)===dateKey(new Date())?'today':''}">${this._dayHeader(date)}${['Breakfast','Lunch','Dinner','Snack'].map(slot=>`<div class="meal-slot"><label>${slot}</label>${eventsOn(events,date).filter(e=>(mealMeta(e).slot||'Dinner')===slot).map(e=>this._eventButton(e)).join('')}${button('+ Plan','add-meal','meal-add',`data-date="${dateKey(date)}" data-slot="${slot}" aria-label="Plan ${slot.toLowerCase()} for ${format(date,{weekday:'long'})}"`)}</div>`).join('')}</section>`).join('')}</div></section><aside class="panel recipes-panel" ${this._config.recipes?'':'hidden'}><div class="panel-head"><h2>Family favorites</h2>${button(icon('plus'),'add-recipe','icon-btn small','aria-label="Add recipe"')}</div><p class="section-note">Save recipes here, then add them to your week.</p>${recipes.map(r=>button(`${esc(r.summary)}<small>View recipe & plan a meal →</small>`,'recipe','recipe-btn',`data-uid="${esc(r.uid)}"`)).join('')||'<div class="empty">Your favorites belong here.<br>Add your first recipe.</div>'}${button('+ Add a recipe','add-recipe','text-link')}</aside></div>`;
  }
  async _click(event){
@@ -276,15 +280,17 @@ class HearthglanceCard extends HTMLElement {
   if(a==='delete-task'){this._confirmDelete('task',this._editingTask);return;}
   if(a==='add-meal'){this._eventForm(null,{meal:true,date:el.dataset.date,slot:el.dataset.slot});return;}
   if(a==='add-recipe'){this._recipeForm();return;}
-  if(a==='recipe'){this._showRecipe(this._tasks[this._config.recipes]?.find(r=>r.uid===el.dataset.uid));return;}
+  if(a==='recipe'){this._showRecipe(this._recipeItems().find(r=>r.uid===el.dataset.uid));return;}
   if(a==='edit-recipe'){this._recipeForm(this._selectedRecipe);return;}
-  if(a==='meal-recipe'){this._showRecipe(this._tasks[this._config.recipes]?.find(r=>r.uid===mealMeta(this._selectedEvent).recipe));return;}
+  if(a==='meal-recipe'){this._showRecipe(this._recipeItems().find(r=>r.uid===mealMeta(this._selectedEvent).recipe));return;}
   if(a==='plan-recipe'){this._eventForm(null,{meal:true,recipe:this._selectedRecipe});return;}
-  if(a==='delete-recipe'){this._confirmDelete('task',{entity:this._config.recipes,item:this._selectedRecipe});return;}
+  if(a==='delete-recipe'){this._confirmDelete('recipe',{item:this._selectedRecipe});return;}
   if(a==='settings'||a==='other-calendars'){this._settings();return;}
  }
  _change(event){
   const input=event.target;
+  if(input.hasAttribute('data-recipe-category')){this._recipeCategory=input.value;this._renderRecipeResults();return;}
+  if(input.hasAttribute('data-recipe-favorites')){this._recipeFavorites=input.checked;this._renderRecipeResults();return;}
   if(input.name==='phone_view'){this._view=input.value;this._mobileQuery='';this._loadCalendars();return;}
   if(input.name==='phone_schedule_days'){this._prefs.scheduleDays=Number(input.value);this._savePrefs();if(this._view==='schedule')this._loadCalendars();return;}
   if(input.dataset.phonePerson){const id=input.dataset.phonePerson;input.checked?this._hidden.delete(id):this._hidden.add(id);this._savePrefs();this._renderMain();return;}
@@ -324,7 +330,7 @@ class HearthglanceCard extends HTMLElement {
   if(!event)return;this._selectedEvent=event;
   const features=this._hass.states[event.calendar.entity]?.attributes.supported_features||0,recurring=Boolean(event.rrule||event.recurrence_id),meta=mealMeta(event);
   const notes=event.calendar.kind==='meals'?meta.notes||'':event.description;
-  const linkedRecipe=this._tasks[this._config.recipes]?.find(r=>r.uid===meta.recipe);
+  const linkedRecipe=this._recipeItems().find(r=>r.uid===meta.recipe);
   this._openModal(event.calendar.kind==='meals'?'On the menu':'Event details',`<span class="tag" style="${this._calStyle(event.calendar)}">${esc(event.calendar.name)}${meta.slot?' · '+esc(meta.slot):''}</span><h3 class="detail-title">${esc(event.title)}</h3><div class="detail-line">${icon('calendar')}<span>${format(event.start,{weekday:'long',month:'long',day:'numeric',year:'numeric'})}${dateKey(event.start)!==dateKey(event.allDay?addDays(event.end,-1):event.end)?'<br>through '+format(event.allDay?addDays(event.end,-1):event.end,{month:'long',day:'numeric'}):''}<br>${event.allDay?'All day':esc(time(event.start)+' – '+time(event.end))}</span></div>${event.location?`<div class="detail-line">${icon('pin')}<span>${esc(event.location)}</span></div>`:''}${notes?`<div class="detail-notes">${esc(notes)}</div>`:''}${!(features&1)?'<p class="section-note">Subscribed calendar · edit events in the source calendar.</p>':''}${recurring?'<p class="section-note">Repeating event · manage the series in Home Assistant’s calendar.</p>':''}<div class="modal-foot">${features&2&&!recurring?button('Delete','delete-event','btn danger'):''}${button('Close','close-modal','btn')}${linkedRecipe?button('View recipe','meal-recipe','btn primary'):''}${features&4&&!recurring?button('Edit event','edit-event','btn primary'):''}${recurring?'<a class="btn" href="/calendar">Open HA calendar</a>':''}</div>`);
  }
  _taskForm({person,entity,item}={}){
@@ -332,16 +338,7 @@ class HearthglanceCard extends HTMLElement {
   entity=entity||owner?.todo;if(!entity)return;this._editingTask={entity,item};const meta=item?taskMeta(item):{};
   this._openModal(item?(chores?'Edit chore':'Edit item'):(chores?'Add a chore':'Add to list'),`<form data-form="task"><div class="form-grid">${this._field(chores?'What needs doing?':'Item','title',item?.summary||'','text','full')}${chores?`<label class="field full">Assigned to<select name="person" ${item?'disabled':''}>${this._options(this._config.people.filter(p=>p.todo).map(p=>[p.id,p.name]),owner.id)}</select></label><label class="field">Repeat<select name="repeat">${this._options(Object.entries(repeatLabels),meta.repeat||'none')}</select></label>${this._field('Due date','due',item?.due?String(item.due).slice(0,10):dateKey(new Date()),'date')}`:''}</div>${this._formFooter(item?'Save changes':'Add',item?'delete-task':'')}</form>`);
  }
- _recipeForm(recipe){
-  this._editingRecipe=recipe;let data={};try{data=JSON.parse(recipe?.description||'{}')||{};}catch{}
-  this._openModal(recipe?'Edit recipe':'Save a family favorite',`<form data-form="recipe"><div class="form-grid">${this._field('Recipe name','title',recipe?.summary||'','text','full')}<label class="field full">Ingredients<textarea name="ingredients" rows="4">${esc(data.ingredients||'')}</textarea></label><label class="field full">Instructions<textarea name="instructions" rows="5">${esc(data.instructions||'')}</textarea></label>${this._field('Source URL (optional)','source',data.source||'','url','full')}</div>${this._formFooter(recipe?'Save changes':'Save recipe')}</form>`,true);
- }
- _showRecipe(recipe){
-  if(!recipe)return;this._selectedRecipe=recipe;let data={};try{data=JSON.parse(recipe.description||'{}')||{};}catch{}
-  const safeURL=/^https?:\/\//i.test(data.source||'')?data.source:'';
-  this._openModal(recipe.summary,`${data.ingredients?`<div class="eyebrow">Ingredients</div><div class="detail-notes">${esc(data.ingredients)}</div>`:''}${data.instructions?`<div class="eyebrow" style="margin-top:25px">Instructions</div><div class="detail-notes">${esc(data.instructions)}</div>`:''}${safeURL?`<p><a href="${esc(safeURL)}" target="_blank" rel="noopener noreferrer">Original recipe ↗</a></p>`:''}${!data.ingredients&&!data.instructions?'<p class="section-note">Add ingredients and instructions to make cooking easier.</p>':''}<div class="modal-foot">${button('Delete','delete-recipe','btn danger')}${button('Edit','edit-recipe','btn')}${this._pages.includes('meals')?button('Plan this meal','plan-recipe','btn primary'):''}</div>`,true);
- }
- _confirmDelete(kind,value){this._deleteTarget={kind,value};this._openModal('Delete '+(kind==='event'?'event':'item')+'?',`<form data-form="delete"><p>Delete <strong>${esc(kind==='event'?value.title:value.item.summary)}</strong>? This removes it from Home Assistant and its connected source, if any. This cannot be undone.</p>${this._formFooter('Delete')}</form>`);}
+ _confirmDelete(kind,value){this._deleteTarget={kind,value};this._openModal('Delete '+(kind==='event'?'event':kind==='recipe'?'recipe':'item')+'?',`<form data-form="delete"><p>Delete <strong>${esc(kind==='event'?value.title:value.item.summary)}</strong>? This removes it from Home Assistant and its connected source, if any. This cannot be undone.</p>${this._formFooter('Delete')}</form>`);}
  _settings(){this._openModal('Make it yours',`<div class="settings-options"><label class="settings-row">Dark appearance<input type="checkbox" data-pref="dark" ${this._prefs.dark?'checked':''}></label><label class="settings-row">Meals on calendar<input type="checkbox" data-pref="showMeals" ${this._prefs.showMeals!==false?'checked':''}></label><div class="eyebrow" style="margin-top:12px">Other calendars</div>${this._config.calendars.filter(c=>c.auxiliary).map(c=>`<label class="settings-row">${esc(c.name)}<input type="checkbox" data-calendar="${c.entity}" ${!this._hidden.has(c.entity)?'checked':''}></label>`).join('')}<p class="section-note">Calendar filters and appearance are saved on this display. Your events, lists, recipes, and chores are stored in Home Assistant.</p><a class="btn" href="/config">Home Assistant settings</a></div>`);}
  async _toggleTask(entity,uid,button){
   const item=this._tasks[entity]?.find(i=>i.uid===uid);if(!item)return;button.disabled=true;
@@ -378,13 +375,11 @@ class HearthglanceCard extends HTMLElement {
     if(form.querySelector('[name=repeat]')){payload.description=JSON.stringify({hearthglance:{...taskMeta(item||{}),repeat:get('repeat')}});if(get('due'))payload.due_date=get('due');}
     await this._hass.callService('todo',item?'update_item':'add_item',payload,{entity_id:entity});
    }else if(kind==='recipe'){
-    if(!get('title'))throw new Error('Give the recipe a name.');
-    const payload={description:JSON.stringify({ingredients:get('ingredients'),instructions:get('instructions'),source:get('source')})};
-    if(this._editingRecipe){payload.item=this._editingRecipe.uid;payload.rename=get('title');}else payload.item=get('title');
-    await this._hass.callService('todo',this._editingRecipe?'update_item':'add_item',payload,{entity_id:this._config.recipes});
+    await this._saveRecipe(get,data);
    }else if(kind==='delete'){
     const {kind:targetKind,value}=this._deleteTarget;
     if(targetKind==='event')await this._hass.callWS({type:'calendar/event/delete',entity_id:value.calendar.entity,uid:value.uid});
+    else if(targetKind==='recipe')await this._removeRecipe(value.item);
     else await this._hass.callService('todo','remove_item',{item:value.item.uid},{entity_id:value.entity});
    }
    this._closeModal();this._toast(kind==='delete'?'Deleted.':'Saved to Home Assistant.');
@@ -393,6 +388,7 @@ class HearthglanceCard extends HTMLElement {
  }
  _toast(message){const root=this.shadowRoot.querySelector('#toast-root');root.innerHTML=`<div class="toast" role="status">${esc(message)}</div>`;clearTimeout(this._toastTimer);this._toastTimer=setTimeout(()=>{root.innerHTML='';},4500);}
 }
+Object.assign(HearthglanceCard.prototype,recipeMethods({icon,button}));
 Object.assign(HearthglanceCard.prototype,mobileMethods({icon,button,format,time,personStyle,weatherGlyph}));
 if(!customElements.get('hearthglance-card'))customElements.define('hearthglance-card',HearthglanceCard);
 window.customCards=window.customCards||[];

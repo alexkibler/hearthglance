@@ -1,0 +1,7 @@
+{
+  "title": "Hearthglance Recipes",
+  "config": {
+    "step": {"user": {"title": "Create your recipe library", "description": "Store recipes and photos locally in Home Assistant. Import a Mela archive once using the Import Mela recipes action; there is no cloud account or synchronization."}},
+    "abort": {"already_configured": "The recipe library is already configured."}
+  }
+}

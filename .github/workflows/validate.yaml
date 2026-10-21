@@ -15,6 +15,11 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Check native recipe importer
+        run: |
+          python3 -m venv .recipe-testenv
+          .recipe-testenv/bin/pip install Pillow pillow-heif==1.8.1
+          .recipe-testenv/bin/python -m unittest discover -s tests -p test_recipe_import.py -v
       - run: npm run package
       - run: git diff --exit-code -- dist/hearthglance-card.js
       - uses: actions/upload-artifact@v7.0.2

@@ -58,4 +58,4 @@ views:
             entity: todo.groceries
           - name: Things to do
             entity: todo.things_to_do
-        recipes: todo.recipes
+        recipes: sensor.hearthglance_recipes # Optional native recipe integration

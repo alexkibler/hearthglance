@@ -9,8 +9,8 @@
 <body>
   <div id="failure" role="alert"></div>
   <script type="module">
-    import '../dist/hearthglance-card.js';
-    import {config,createDemoHass} from './mock-hass.js';
+    import '../dist/hearthglance-card.js?v=0.4.0';
+    import {config,createDemoHass} from './mock-hass.js?v=0.4.0';
     try {
       const card=document.createElement('hearthglance-card');
       const minimal=new URLSearchParams(location.search).has('minimal');

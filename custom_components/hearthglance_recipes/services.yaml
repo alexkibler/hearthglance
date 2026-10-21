@@ -1,0 +1,11 @@
+import_mela:
+  name: Import Mela recipes
+  description: One-time, additive import from a local Mela archive. Matching IDs are skipped, preserving existing edits. Administrator access required.
+  fields:
+    path:
+      name: Archive path
+      description: Path to a .melarecipes export inside /config/imports.
+      required: true
+      example: /config/imports/Recipes.melarecipes
+      selector:
+        text:

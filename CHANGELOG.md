@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Optional native recipe library with a count entity, persistent structured records and private photos.
+- One-time Mela import preserving all recipe fields, original IDs, dates, metadata and images, including HEIC previews.
+- Searchable recipe gallery, category/favorite filters, complete details, editing and meal links on wall and phone layouts.
+- Preserve existing Local To-do recipe configurations.
+
 ## 0.3.2
 
 - Match the Home Assistant return icon to the theme accent on wall and phone layouts, fixing its contrast in dark mode.

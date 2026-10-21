@@ -1,0 +1,13 @@
+{
+  "domain": "hearthglance_recipes",
+  "name": "Hearthglance Recipes",
+  "version": "0.4.0",
+  "config_flow": true,
+  "documentation": "https://github.com/alexkibler/hearthglance/blob/main/docs/recipes.md",
+  "issue_tracker": "https://github.com/alexkibler/hearthglance/issues",
+  "codeowners": ["@alexkibler"],
+  "dependencies": ["http"],
+  "iot_class": "local_push",
+  "integration_type": "service",
+  "requirements": ["pillow-heif==1.8.1"]
+}
