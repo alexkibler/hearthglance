@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Optional solar generation panel on wall and phone home screens.
+- Live current power, today’s actual generation, and a clearly labeled tomorrow forecast.
+- W/kW/MW and Wh/kWh/MWh conversion, unavailable/offline states, and updates without rebuilding the active page.
+
 ## 0.1.0
 
 Initial shareable release package.

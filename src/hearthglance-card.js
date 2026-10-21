@@ -1,3 +1,4 @@
+import {solarReadings, solarStatesChanged, solarStyles} from './solar.js';
 import {normalizeConfig, enabledPages} from './config.js';
 import {styles} from './styles.js';
 import {mobileStyles} from './mobile-styles.js';
@@ -47,7 +48,8 @@ class HearthglanceCard extends HTMLElement {
   this._renderShell();this._start();
  }
  set hass(hass){
-  const wasConnected=this._hass?.connected;this._hass=hass;
+  const previous=this._hass,wasConnected=previous?.connected;this._hass=hass;
+  if(solarStatesChanged(this._config?.solar,previous,hass))this._renderSolar();
   if(!this._started){this._start();return;}
   this._updateConnection();
   if(!wasConnected&&hass.connected)this._updateClock();
@@ -116,7 +118,7 @@ class HearthglanceCard extends HTMLElement {
  _savePrefs(){this._prefs.hidden=[...this._hidden];try{localStorage.setItem(this._storageKey,JSON.stringify(this._prefs));}catch{}}
  _renderShell(){
   if(!this._config)return;
-  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><div class="brand" title="Family calendar">${icon('leaf')}</div>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}<a class="ha-link" href="/config">Home<br>Assistant</a></div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
+  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><div class="brand" title="Family calendar">${icon('leaf')}</div>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}<a class="ha-link" href="/config">Home<br>Assistant</a></div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
   this._updateClock();this._renderWeather();this._renderMain();
  }
  _updateClock(){
@@ -167,7 +169,7 @@ class HearthglanceCard extends HTMLElement {
   if(this._page==='calendar')return filters+calendar;
   const meals=eventsOn(Object.values(this._events).flat().filter(e=>e.calendar.kind==='meals'),new Date());
   const dinner=meals.find(e=>mealMeta(e).slot==='Dinner')||meals[0];
-  return `${filters}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${button(dinner?'View meals':'Plan dinner',dinner?'go-meals':'add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
+  return `${filters}${this._solarHTML()}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${button(dinner?'View meals':'Plan dinner',dinner?'go-meals':'add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
  }
  _toolbar(view=this._view){
   const range=rangeFor(view,this._date);
@@ -208,6 +210,18 @@ class HearthglanceCard extends HTMLElement {
   const entries=people.flatMap(p=>(this._tasks[p.todo]||[]).filter(i=>dueToday(i)).map(item=>({person:p,item})));
   const done=entries.filter(x=>x.item.status==='completed').length;
   return `<section class="panel"><div class="panel-head"><h2>A little teamwork</h2><span class="count">${done}/${entries.length} done</span></div>${entries.filter(x=>x.item.status!=='completed').slice(0,3).map(({person,item})=>this._taskRows(person.todo,[item],true)).join('')||`<div class="empty">${icon('check')}${entries.length?'All caught up. Nice teamwork!':'No chores for today.'}</div>`}${button('View all chores →','go-tasks','text-link')}</section>`;
+ }
+ _solarValueHTML(reading){return `<strong class="solar-number">${esc(reading.value)}</strong>${reading.unit?`<span class="solar-unit">${esc(reading.unit)}</span>`:`<span class="solar-status">${esc(reading.status)}</span>`}`;}
+ _solarHTML(){
+  const readings=solarReadings(this._config.solar,this._hass?.states,this._hass?.connected);
+  if(!readings.length)return '';
+  return `<section class="solar-panel" aria-label="Solar generation"><div class="solar-header"><h2>${icon('sun')}Solar generation</h2><a class="solar-link" href="/energy" aria-label="Open Home Assistant Energy dashboard">Details ↗</a></div><dl class="solar-metrics" style="--solar-count:${readings.length}">${readings.map(r=>`<div class="solar-metric"><dt>${esc(r.label)}</dt><dd data-solar-value="${r.key}">${this._solarValueHTML(r)}</dd></div>`).join('')}</dl></section>`;
+ }
+ _renderSolar(){
+  for(const reading of solarReadings(this._config.solar,this._hass?.states,this._hass?.connected)){
+   const value=this.shadowRoot.querySelector(`[data-solar-value="${reading.key}"]`);
+   if(value)value.innerHTML=this._solarValueHTML(reading);
+  }
  }
  _groceryHTML(){if(!this._config.lists.length)return '';const list=this._config.lists[0],items=(this._tasks[list.entity]||[]).filter(i=>i.status!=='completed');return `<section class="panel"><div class="panel-head"><h2>${esc(list.name)}</h2><span class="count">${items.length} ${items.length===1?'item':'items'}</span></div>${this._taskRows(list.entity,items.slice(0,3),true)||`<div class="empty">The list is clear.<br>Add something before you forget.</div>`}${button('+ Add to list','quick-grocery','text-link')}</section>`;}
  _choresPage(){

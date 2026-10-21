@@ -41,3 +41,16 @@ test('new chores choose a configured chore owner when the first profile has no l
  assert.equal(c._editingTask.entity,'todo.pat');assert.match(content,/<option value="pat" selected>/);
  assert.doesNotMatch(content,/<option value="family"/);
 });
+
+test('live solar changes update the values without rebuilding the active page',()=>{
+ const c=card();let valuesUpdated=0,pagesRebuilt=0;
+ c.setConfig({...config(),solar:{power:'sensor.power'}});
+ c._renderSolar=()=>{valuesUpdated++;};c._renderMain=()=>{pagesRebuilt++;};c._updateConnection=()=>{};
+ c._started=true;
+ const power={state:'1',attributes:{unit_of_measurement:'kW'}};
+ c.hass={connected:true,states:{'sensor.power':power}};
+ c.hass={connected:true,states:{'sensor.power':power,'sensor.unrelated':{state:'2'}}};
+ assert.equal(valuesUpdated,1);
+ c.hass={connected:true,states:{'sensor.power':{...power,state:'3'}}};
+ assert.equal(valuesUpdated,2);assert.equal(pagesRebuilt,0);c._stop();
+});

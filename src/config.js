@@ -41,10 +41,16 @@ export function normalizeConfig(raw) {
   const lists = array(raw.lists, 'lists').map((l, i) => ({entity: entity(l.entity, 'todo', `lists[${i}].entity`), name: String(l.name || 'Shared list')}));
   const recipes = entity(raw.recipes, 'todo', 'recipes', true);
   distinct([...people.map(p => p.todo), ...lists.map(l => l.entity), recipes].filter(Boolean), 'to-do entities across people, lists, and recipes');
+  let solar;
+  if (raw.solar != null) {
+    if (typeof raw.solar !== 'object' || Array.isArray(raw.solar)) throw new Error('Hearthglance: solar must be an object of sensor entity IDs.');
+    solar = Object.fromEntries(['power', 'today', 'forecast_tomorrow'].filter(key => raw.solar[key] !== undefined).map(key => [key, entity(raw.solar[key], 'sensor', `solar.${key}`)]));
+    if (!Object.keys(solar).length) throw new Error('Hearthglance: solar needs power, today, or forecast_tomorrow.');
+  }
   const default_calendar = raw.default_calendar ? entity(raw.default_calendar, 'calendar', 'default_calendar') : calendars.find(c => !c.kind)?.entity;
   if (default_calendar && !calendars.some(c => c.entity === default_calendar && c.kind !== 'meals')) throw new Error('Hearthglance: default_calendar must be a configured regular calendar.');
   if (raw.storage_key != null && (typeof raw.storage_key !== 'string' || !raw.storage_key.trim())) throw new Error('Hearthglance: storage_key must be a nonempty string.');
-  return {type: 'custom:hearthglance-card', household: String(raw.household || 'Our family'), people, calendars, lists, recipes, weather: entity(raw.weather, 'weather', 'weather', true), default_calendar, storage_key: raw.storage_key || calendars.map(c => c.entity).sort().join(':')};
+  return {type: 'custom:hearthglance-card', household: String(raw.household || 'Our family'), people, calendars, lists, recipes, solar, weather: entity(raw.weather, 'weather', 'weather', true), default_calendar, storage_key: raw.storage_key || calendars.map(c => c.entity).sort().join(':')};
 }
 export function enabledPages(config) {
   return ['home', 'calendar', ...(config.people.some(p => p.todo) ? ['tasks'] : []), ...(config.lists.length ? ['list'] : []), ...(config.calendars.some(c => c.kind === 'meals') ? ['meals'] : []), ...(config.recipes ? ['recipes'] : []), 'settings'];
