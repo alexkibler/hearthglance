@@ -45,7 +45,7 @@ HACS's default catalog is a separate submission process; install this project as
 
 ## Manual installation
 
-Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.3.1` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.3.2` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
 
 ## Start small
 

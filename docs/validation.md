@@ -31,3 +31,7 @@ Checked on 2026-10-21: all 29 tests pass, including six distinct daily forecasts
 ## 0.3.1 Home Assistant navigation
 
 Checked on 2026-10-21: all 29 existing tests pass. The Home Assistant icon and Overview link were checked in wall and phone layouts. Phone Calendar navigation still returns home through its back arrow. The bundled resource includes the icon license notices.
+
+## 0.3.2 theme contrast
+
+Checked on 2026-10-21: all 29 existing tests pass and the release bundle builds. The bundled fictional wall preview was checked in dark appearance; the Home Assistant icon uses the same light green accent as the navigation. Removed the conflicting dark brand foreground override.

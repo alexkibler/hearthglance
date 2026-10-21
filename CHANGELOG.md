@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Match the Home Assistant return icon to the theme accent on wall and phone layouts, fixing its contrast in dark mode.
+
 ## 0.3.1
 
 - Replace the decorative leaf with a Home Assistant icon linking to HA’s Overview dashboard on wall and phone home screens.
