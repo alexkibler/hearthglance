@@ -7,7 +7,7 @@ root = Path(__file__).resolve().parent.parent
 version = json.loads((root / 'package.json').read_text())['version']
 files = ['README.md', 'LICENSE', 'CHANGELOG.md', 'CONTRIBUTING.md', 'hacs.json',
          'package.json', 'package-lock.json', '.gitignore']
-for directory in ['src', 'dist', 'examples', 'blueprints', 'scripts', 'tests', 'docs', '.github', 'custom_components']:
+for directory in ['src', 'dist', 'examples', 'themes', 'blueprints', 'scripts', 'tests', 'docs', '.github', 'custom_components']:
     files.extend(str(p.relative_to(root)) for p in (root / directory).rglob('*') if p.is_file() and p.name != '.DS_Store' and '__pycache__' not in p.parts and p.suffix != '.pyc')
 output = root / 'releases'
 output.mkdir(exist_ok=True)

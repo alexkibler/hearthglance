@@ -21,4 +21,4 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/hearthglance-card.js releases/* --verify-tag --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/hearthglance-card.js themes/hearthglance.yaml releases/* --verify-tag --generate-notes

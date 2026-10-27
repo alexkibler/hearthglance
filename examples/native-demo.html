@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hearthglance native cards — fictional preview</title>
+<style>
+body{margin:0;background:#f6f7f4;color:#263c3b;font:16px Arial,Helvetica,sans-serif}
+.host-header{position:fixed;inset:0 auto 0 0;width:190px;padding:22px 16px;background:white;border-right:1px solid #e5eae4}.host-header summary{font-weight:bold;line-height:1.6;cursor:pointer}
+nav{display:flex;flex-direction:column;gap:12px;margin-top:20px}nav a{color:inherit;text-decoration:none;padding:8px 0;white-space:nowrap}nav a[aria-current=page]{color:#326b5b;border-left:3px solid #326b5b;padding-left:10px}
+main{padding:20px;max-width:1600px;margin-left:224px}.cards{display:grid;gap:20px}#failure{color:#a00;padding:10px}
+@media(max-width:700px){.host-header{position:static;width:auto;border-right:0;border-bottom:1px solid #e5eae4;padding:12px 16px}main{margin-left:0;padding:12px}}
+</style>
+<details class="host-header" open><summary>Home Assistant dashboards · fictional test data</summary><nav aria-label="Host dashboard navigation"></nav></details>
+<main><div id="failure" role="alert"></div><div class="cards"></div></main>
+<script type="module">
+import '../dist/hearthglance-card.js?v=0.5.0';
+import {config,createDemoHass} from './mock-hass.js';
+const pages=[['home','Home'],['calendar','Calendar'],['chores','Chores'],['lists','Lists'],['meals','Meals'],['recipes','Recipes']];
+document.querySelector('.host-header').open=window.matchMedia('(min-width:701px)').matches;
+const query=new URLSearchParams(location.search),page=query.get('page')||'home';
+const path=name=>`/examples/native-demo.html?page=${name}${query.has('width')?'&width='+query.get('width'):''}`;
+const routes=Object.fromEntries(pages.map(([name])=>[name==='chores'?'tasks':name==='lists'?'list':name,path(name)]));
+const nav=document.querySelector('nav');
+for(const [name,label] of pages){const a=document.createElement('a');a.href=path(name);a.textContent=label;if(name===page)a.setAttribute('aria-current','page');nav.append(a);}
+if(query.has('width')){const width=Number(query.get('width'));if(width>=320&&width<=1600)document.querySelector('main').style.width=`${width}px`;}
+const hass=createDemoHass(),root=document.querySelector('.cards');
+function render(){
+ const current=new URLSearchParams(location.search).get('page')||'home';
+ root.replaceChildren();
+ for(const name of ['header',current]){
+  const card=document.createElement(`hearthglance-${name}-card`);
+  card.setConfig({...config,type:`custom:hearthglance-${name}-card`,routes,storage_key:'native-fictional-demo'});
+  card.hass=hass;root.append(card);
+ }
+ for(const a of nav.querySelectorAll('a'))a.setAttribute('aria-current',new URL(a.href).searchParams.get('page')===current?'page':'false');
+}
+try{render();window.addEventListener('location-changed',render);window.addEventListener('popstate',render);}catch(error){document.querySelector('#failure').textContent=error.stack;}
+</script>
+</html>
