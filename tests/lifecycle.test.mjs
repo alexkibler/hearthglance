@@ -54,3 +54,17 @@ test('live solar changes update the values without rebuilding the active page',(
  c.hass={connected:true,states:{'sensor.power':{...power,state:'3'}}};
  assert.equal(valuesUpdated,2);assert.equal(pagesRebuilt,0);c._stop();
 });
+
+test('native cards follow HA dark mode for content and open dialogs without rebuilding them',()=>{
+ const c=card();c._native=true;c._started=true;c._updateConnection=()=>{};
+ const classes=new Map();let renders=0;
+ c.shadowRoot.querySelector=selector=>({classList:{toggle:(name,value)=>classes.set(selector+':'+name,value)}});
+ c._renderMain=()=>{renders++;};
+ c.hass={connected:true,states:{},themes:{darkMode:true}};
+ assert.equal(classes.get('.app:theme-dark'),true);
+ assert.equal(classes.get('#modal-root:theme-dark'),true);
+ c.hass={connected:true,states:{},themes:{darkMode:false}};
+ assert.equal(classes.get('.app:theme-dark'),false);
+ assert.equal(classes.get('#modal-root:theme-dark'),false);
+ assert.equal(renders,0);c._stop();
+});
