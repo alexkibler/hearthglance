@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const elements=new Map();
-globalThis.HTMLElement=class{attachShadow(){this.shadowRoot={addEventListener(){},removeEventListener(){},querySelector(){return null;}};}};
+globalThis.HTMLElement=class{toggleAttribute(){} attachShadow(){this.shadowRoot={addEventListener(){},removeEventListener(){},querySelector(){return null;}};}};
 globalThis.window={matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})};
 globalThis.customElements={get:name=>elements.get(name),define:(name,value)=>elements.set(name,value)};
 globalThis.localStorage={getItem:()=>null};

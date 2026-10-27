@@ -2,7 +2,7 @@
 
 A family dashboard for Home Assistant, built for a wall touchscreen and comfortable on a phone.
 
-Calendars, chores, shared lists, meals, recipes, and weather live together in a single native dashboard card. Home Assistant calendar and to-do integrations hold scheduling and list data; the optional Hearthglance Recipes integration owns structured recipes and photos. No separate server, account, or subscription is needed.
+Calendars, chores, shared lists, meals, recipes, and weather are available as reusable cards for separate Home Assistant dashboards. Home Assistant calendar and to-do integrations hold scheduling and list data; the optional Hearthglance Recipes integration owns structured recipes and photos. No separate server, account, or subscription is needed.
 
 ![Wall dashboard with fictional demo data](docs/images/solar-wall.jpg)
 
@@ -18,15 +18,32 @@ Calendars, chores, shared lists, meals, recipes, and weather live together in a 
 - Optional recurring chore automation, daily weather forecast, dark appearance, and per-display filters.
 - A single bundled JavaScript file with no runtime libraries, external fonts, analytics, or direct third-party requests. Calendar integrations may themselves use cloud services.
 
-### Opening on a phone
+### Home Assistant sidebar navigation
 
-Open the same Hearthglance dashboard URL in your phone browser, or select Hearthglance in the Home Assistant companion app sidebar. The phone layout activates automatically at 600 px or narrower. The Home Assistant icon in the upper-left returns to HA’s Overview dashboard; back arrows inside phone sections return to Hearthglance’s home screen.
+Use the new **Home**, **Calendar**, **Chores**, **Lists**, **Meals**, **Recipes**, and
+**Header** cards in separate, single-view Home Assistant dashboards. Put Home,
+Calendar, Chores, Lists, Meals, and Recipes in HA's sidebar. The cards preserve
+Hearthglance's appearance and editing workflows while HA provides navigation,
+page URLs, and browser history, without Hearthglance-owned page tabs. Layouts adapt to each card's available width.
+
+See [Native views and migration](docs/native-views.md) and the
+[separate dashboard examples](examples/dashboards/). The optional
+[Hearthglance theme](themes/hearthglance.yaml) carries the same appearance across
+HA's own cards and interface, with light and dark modes. HACS continues to manage
+one JavaScript bundle; install the theme separately.
+
+The original `custom:hearthglance-card` remains available for existing full-screen
+installations. It requires a panel view and retains its legacy navigation.
+Upgrading through HACS does not automatically change your dashboard layout.
 
 ## Requirements
 
-Home Assistant **2026.10 or newer**, a current browser, and at least one calendar entity. This initial release uses Home Assistant's calendar and to-do WebSocket subscriptions. Earlier HA releases are not supported.
-
-Use a dedicated **panel view** containing only this card. Hearthglance fills the viewport and includes its own navigation. It is not intended for a small card in a grid. Wall layouts were checked at 1920 × 1080; the dedicated phone layout activates at 600 px or narrower. English labels, US date/time formatting, Sunday-start weeks, and the browser's local timezone are currently used. Set the device timezone to match Home Assistant.
+Home Assistant **2026.10 or newer**, a current browser, and entity integrations
+for the cards you use. Home/Calendar need calendar entities; standalone lists,
+chores, recipes, and weather cards need only their corresponding entities.
+Calendar and to-do subscriptions use HA's WebSocket API. English labels, US
+formatting, Sunday-start weeks, and the browser's local timezone are currently
+used. Set the device timezone to match Home Assistant.
 
 A Raspberry Pi Zero W requires a working browser/kiosk environment; installation does not provision the Pi. Performance and physical touch behavior depend on the device/browser and have not been benchmarked on that hardware.
 
@@ -37,7 +54,7 @@ This repository is structured as a HACS **Dashboard** repository (internally cal
 1. In HACS, open **Custom repositories**, enter `https://github.com/alexkibler/hearthglance`, and select **Dashboard**.
 2. Find **Hearthglance**, download it, and reload Home Assistant's frontend.
 3. Check **Settings → Dashboards → Resources**. If HACS did not add the resource, add `/hacsfiles/hearthglance/hearthglance-card.js` as a **JavaScript module**. The folder is the repository name; adjust it if you named the repository differently.
-4. Create an empty dashboard, open its **Raw configuration editor**, and paste [the minimal example](examples/minimal.yaml). Replace `calendar.family` with your own entity ID.
+4. Create an empty dashboard, open its **Raw configuration editor**, and use [the separate dashboard examples](examples/dashboards/) or paste [the legacy minimal example](examples/minimal.yaml). Replace `calendar.family` with your own entity ID.
 
 If Resources is hidden, enable Advanced mode in your Home Assistant profile. Do not load both the HACS resource and a manually installed copy.
 
@@ -45,7 +62,7 @@ HACS's default catalog is a separate submission process; install this project as
 
 ## Manual installation
 
-Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.4.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
+Copy `dist/hearthglance-card.js` into `/config/www/hearthglance-card/`. Add `/local/hearthglance-card/hearthglance-card.js?v=0.5.0` to dashboard Resources as a **JavaScript module**, then follow step 4 above. No HA restart is needed for the card. Increment the resource query string after replacing the file if your browser retains the old copy.
 
 ## Native recipe library
 

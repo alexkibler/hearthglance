@@ -4,6 +4,7 @@ import {recipeMethods,recipeStyles} from './recipes.js';
 import {styles} from './styles.js';
 import {mobileStyles} from './mobile-styles.js';
 import {mobileMethods} from './mobile.js';
+import {nativeCards, pageSubscriptions, navigateView, calendarLocation, nativeStyles} from './native.js';
 import {dateKey,localDate,addDays,midnight,weekStart,rangeFor,escapeHTML as esc,normalizeEvent,eventsOn,uniqueEvents,taskMeta,mealMeta,dueToday} from './model.js';
 
 const paths={
@@ -30,7 +31,8 @@ class HearthglanceCard extends HTMLElement {
   super();this.attachShadow({mode:'open'});this._events={};this._tasks={};this._forecast=[];this._unsubs=[];this._calendarUnsubs=[];this._errors=new Map();this._date=new Date();this._page='home';this._view='week';this._list=0;this._busy=false;this._generation=0;this._eventIndex=[];
   this._prefs={};this._hidden=new Set();
   this._phoneMedia=window.matchMedia('(max-width:600px)');this._mobile=this._phoneMedia.matches;
-  this._onPhoneResize=()=>{if(this.shadowRoot.querySelector('#modal-root'))this._closeModal();this._mobile=this._phoneMedia.matches;if(this._mobile&&this._view==='day')this._view='week';this._renderShell();this._loadCalendars();};
+  this._onPhoneResize=()=>{if(!this._native)this._setMobile(this._phoneMedia.matches);};
+  if(typeof ResizeObserver!=='undefined')this._resizeObserver=new ResizeObserver(entries=>{const width=entries[0]?.contentRect.width;if(this._native&&width>0)this._setMobile(width<=600);});
   this.shadowRoot.addEventListener('touchstart',e=>this._phoneTouchStart(e),{passive:true});
   this.shadowRoot.addEventListener('touchend',e=>this._phoneTouchEnd(e),{passive:true});
   this.shadowRoot.addEventListener('touchcancel',()=>{this._swipeStart=null;},{passive:true});
@@ -42,7 +44,9 @@ class HearthglanceCard extends HTMLElement {
  }
  setConfig(config){
   const normalized=normalizeConfig(config);
-  this._stop();this._config=normalized;this._pages=enabledPages(normalized);this._page='home';this._list=0;
+  this._stop();this._config=normalized;this._native=Boolean(normalized.page);this.toggleAttribute('data-native',this._native);this._subscriptions=pageSubscriptions(normalized);this._pages=enabledPages(normalized);this._page=normalized.page||'home';this._list=0;
+  this._view=this._page==='calendar'&&!this._mobile?'month':'week';
+  if(this._native&&this._page==='calendar'){const location=calendarLocation(window.location?.search||'');if(location.date)this._date=location.date;if(location.view)this._view=this._mobile&&location.view==='day'?'week':location.view;}
   this._events={};this._tasks={};this._recipes=[];this._recipeQuery='';this._recipeCategory='';this._recipeFavorites=false;this._errors.clear();this._forecast=[];
   this._storageKey='hearthglance:'+normalized.storage_key;
   try{const prefs=JSON.parse(localStorage.getItem(this._storageKey)||'{}');this._prefs=prefs&&typeof prefs==='object'&&!Array.isArray(prefs)?prefs:{};}catch{this._prefs={};}
@@ -61,8 +65,10 @@ class HearthglanceCard extends HTMLElement {
   return {type:'custom:hearthglance-card',household:'Our family',people:[{id:'family',name:'Family'}],calendars:[{entity:calendar,name:'Family',person:'family'}]};
  }
  getCardSize(){return 12;}
- connectedCallback(){this._active=true;this._phoneMedia.addEventListener('change',this._onPhoneResize);if(this._config){this._renderShell();this._start();}}
- disconnectedCallback(){this._active=false;this._phoneMedia.removeEventListener('change',this._onPhoneResize);this._stop();}
+ getGridOptions(){return {columns:'full',rows:'auto'};}
+ connectedCallback(){this._active=true;this._phoneMedia.addEventListener('change',this._onPhoneResize);this._resizeObserver?.observe(this);if(this._config){this._renderShell();this._start();}}
+ disconnectedCallback(){this._active=false;this._phoneMedia.removeEventListener('change',this._onPhoneResize);this._resizeObserver?.disconnect();this._stop();}
+ _setMobile(mobile){if(this._mobile===mobile)return;if(this.shadowRoot.querySelector('#modal-root'))this._closeModal();this._mobile=mobile;if(mobile&&this._view==='day')this._view='week';this._renderShell();this._loadCalendars();}
  _stop(){
   this._started=false;clearInterval(this._clockTimer);clearTimeout(this._toastTimer);this._generation++;this._sessionGeneration=(this._sessionGeneration||0)+1;
   for(const unsub of [...this._unsubs,...this._calendarUnsubs])Promise.resolve().then(unsub).catch(()=>{});
@@ -72,16 +78,16 @@ class HearthglanceCard extends HTMLElement {
   if(this._started||!this._active||!this._hass||!this._config)return;
   const session=this._sessionGeneration;this._started=true;this._today=dateKey(new Date());this._updateClock();
   this._clockTimer=setInterval(()=>{this._updateClock();if(this._today!==dateKey(new Date())){this._today=dateKey(new Date());this._date=new Date();this._loadCalendars();}},30000);
-  const entities=[...new Set([...this._config.people.map(p=>p.todo),...this._config.lists.map(l=>l.entity),this._config.recipes?.startsWith('todo.')?this._config.recipes:undefined].filter(Boolean))];
+  const entities=this._subscriptions.todos;
   for(const entity of entities){
    try{
     const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._tasks[entity]=message.items||[];this._errors.delete(entity);this._renderMain();},{type:'todo/item/subscribe',entity_id:entity});
     if(!this._started||session!==this._sessionGeneration){unsub();return;}this._unsubs.push(unsub);
    }catch(error){if(session!==this._sessionGeneration)return;this._errors.set(entity,'A task list is unavailable. Try Refresh.');}
   }
-  await this._startRecipes(session);
+  if(this._subscriptions.recipes)await this._startRecipes(session);
   if(session!==this._sessionGeneration)return;
-  if(this._config.weather)try{
+  if(this._subscriptions.weather&&this._config.weather)try{
    const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._forecast=message.forecast||[];this._renderWeather();this._renderMain();},{type:'weather/subscribe_forecast',entity_id:this._config.weather,forecast_type:'daily'});
    if(this._started&&session===this._sessionGeneration)this._unsubs.push(unsub);else unsub();
   }catch(error){if(session===this._sessionGeneration)this._errors.set('weather','The weather forecast is unavailable.');}
@@ -96,9 +102,10 @@ class HearthglanceCard extends HTMLElement {
   const min=midnight(new Date()),max=addDays(min,1);
   // Keep today's agenda available even while browsing another week.
   const currentInRange=range.start<=min&&range.end>=max;
-  let remaining=this._config.calendars.length;
+  let remaining=this._subscriptions.calendars.length;
+  if(!remaining){this._loading=false;this._renderMain();return;}
   const done=()=>{if(gen===this._generation){remaining--;this._loading=remaining>0;this._renderMain();}};
-  for(const calendar of this._config.calendars){
+  for(const calendar of this._subscriptions.calendars){
    this._subscribeCalendar(calendar,range,gen,currentInRange,done);
   }
  }
@@ -122,8 +129,23 @@ class HearthglanceCard extends HTMLElement {
  _savePrefs(){this._prefs.hidden=[...this._hidden];try{localStorage.setItem(this._storageKey,JSON.stringify(this._prefs));}catch{}}
  _renderShell(){
   if(!this._config)return;
+  if(this._native){this._renderNativeShell();return;}
   this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><a class="brand ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">${icon('ha')}</a>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}</div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
   this._updateClock();this._renderWeather();this._renderMain();
+ }
+ _renderNativeShell(){
+  const header=this._page==='header';
+  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}${nativeStyles}</style><div class="app native ${this._mobile?'phone':''}"><div class="body">${header?'<header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header>':'<main class="main"></main>'}</div></div><div id="modal-root" class="${this._mobile?'phone-ui':''}"></div><div id="toast-root" aria-live="polite"></div>`;
+  this._updateClock();this._renderMain();
+ }
+ _navigatePage(page,options={}){
+  if(!this._native){this._phoneNavigate(page);return;}
+  const route=this._config.routes?.[page];
+  if(route)navigateView(route,options);
+ }
+ _pageButton(label,page,classes='text-link'){
+  if(this._native&&!this._config.routes?.[page])return '';
+  return button(label,'page',classes,`data-page="${page}"`);
  }
  _updateClock(){
   const now=new Date(),clock=this.shadowRoot.querySelector('.clock-time'),date=this.shadowRoot.querySelector('.clock-date');
@@ -135,6 +157,7 @@ class HearthglanceCard extends HTMLElement {
   const el=this.shadowRoot.querySelector('.connection');if(!el)return;
   const connected=this._hass?.connected!==false;el.classList.toggle('offline',!connected);
   el.querySelector('.connection-label').textContent=connected?'Connected to home':'Reconnecting…';
+  el.title=connected?'Connected to Home Assistant':'Reconnecting to Home Assistant';
  }
  _solarDayHTML(date){
   const reading=solarForDate(this._config.solar,this._hass?.states,date,new Date(),this._hass?.connected);
@@ -185,7 +208,7 @@ class HearthglanceCard extends HTMLElement {
   if(this._page==='calendar')return filters+calendar;
   const meals=eventsOn(Object.values(this._events).flat().filter(e=>e.calendar.kind==='meals'),new Date());
   const dinner=meals.find(e=>mealMeta(e).slot==='Dinner')||meals[0];
-  return `${filters}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${button(dinner?'View meals':'Plan dinner',dinner?'go-meals':'add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
+  return `${filters}<div class="home-grid"><div class="calendar-area">${calendar}${this._pages.includes('meals')?`<div class="dinner-strip"><div class="meal-icon">${icon('meals')}</div><div><div class="eyebrow">${dinner?'On the menu today':'Tonight, at home'}</div><strong>${esc(dinner?.title||'What’s for dinner?')}</strong></div>${dinner?this._pageButton('View meals','meals','btn small'):button('Plan dinner','add-meal','btn small')}</div>`:''}</div><aside class="aside">${this._agendaHTML()}${this._todayTasksHTML()}${this._groceryHTML()}</aside></div>`;
  }
  _toolbar(view=this._view){
   const range=rangeFor(view,this._date);
@@ -225,7 +248,7 @@ class HearthglanceCard extends HTMLElement {
   const people=this._config.people.filter(p=>p.todo&&!this._hidden.has(p.id));
   const entries=people.flatMap(p=>(this._tasks[p.todo]||[]).filter(i=>dueToday(i)).map(item=>({person:p,item})));
   const done=entries.filter(x=>x.item.status==='completed').length;
-  return `<section class="panel"><div class="panel-head"><h2>A little teamwork</h2><span class="count">${done}/${entries.length} done</span></div>${entries.filter(x=>x.item.status!=='completed').slice(0,3).map(({person,item})=>this._taskRows(person.todo,[item],true)).join('')||`<div class="empty">${icon('check')}${entries.length?'All caught up. Nice teamwork!':'No chores for today.'}</div>`}${button('View all chores →','go-tasks','text-link')}</section>`;
+  return `<section class="panel"><div class="panel-head"><h2>A little teamwork</h2><span class="count">${done}/${entries.length} done</span></div>${entries.filter(x=>x.item.status!=='completed').slice(0,3).map(({person,item})=>this._taskRows(person.todo,[item],true)).join('')||`<div class="empty">${icon('check')}${entries.length?'All caught up. Nice teamwork!':'No chores for today.'}</div>`}${this._pageButton('View all chores →','tasks')}</section>`;
  }
  _renderSolar(){this._renderWeather();}
  _groceryHTML(){if(!this._config.lists.length)return '';const list=this._config.lists[0],items=(this._tasks[list.entity]||[]).filter(i=>i.status!=='completed');return `<section class="panel"><div class="panel-head"><h2>${esc(list.name)}</h2><span class="count">${items.length} ${items.length===1?'item':'items'}</span></div>${this._taskRows(list.entity,items.slice(0,3),true)||`<div class="empty">The list is clear.<br>Add something before you forget.</div>`}${button('+ Add to list','quick-grocery','text-link')}</section>`;}
@@ -258,10 +281,13 @@ class HearthglanceCard extends HTMLElement {
   if(a==='phone-task-mode'){this._taskMode=el.dataset.mode;this._renderMain();return;}
   if(a==='phone-open-list'){this._list=Number(el.dataset.list);this._mobileListOpen=true;this._renderMain();return;}
   if(a==='phone-meal-day'){this._date=localDate(el.dataset.date);this._renderMain();return;}
-  if(a==='page'){this._page=el.dataset.page;this._view=this._page==='calendar'?'month':'week';this._date=new Date();this._renderMain();this._loadCalendars();return;}
+  if(a==='page'){this._navigatePage(el.dataset.page);return;}
   if(a==='view'){this._view=el.dataset.view;this._loadCalendars();return;}
   if(a==='filter'){const id=el.dataset.person;this._hidden.has(id)?this._hidden.delete(id):this._hidden.add(id);this._savePrefs();this._renderMain();return;}
-  if(a==='day'){this._date=localDate(el.dataset.date);this._page='calendar';this._view=this._mobile?'week':'day';if(this._mobile)this._pendingFocusDate=el.dataset.date;this._loadCalendars();return;}
+  if(a==='day'){
+   if(this._native&&this._page==='home'&&this._config.routes?.calendar){this._navigatePage('calendar',{date:el.dataset.date,view:this._mobile?'week':'day'});return;}
+   this._date=localDate(el.dataset.date);if(!this._native)this._page='calendar';if(this._page!=='meals')this._view=this._mobile?'week':'day';if(this._mobile)this._pendingFocusDate=el.dataset.date;this._loadCalendars();return;
+  }
   if(a==='previous'||a==='next'){
    this._navigatePeriod(a==='next'?1:-1);return;
   }
@@ -271,7 +297,7 @@ class HearthglanceCard extends HTMLElement {
   if(a==='add-event'){this._eventForm(null,{date:el.dataset.date});return;}
   if(a==='edit-event'){this._eventForm(this._selectedEvent);return;}
   if(a==='delete-event'){this._confirmDelete('event',this._selectedEvent);return;}
-  if(a==='go-tasks'||a==='go-meals'){this._page=a==='go-tasks'?'tasks':'meals';this._loadCalendars();return;}
+  if(a==='go-tasks'||a==='go-meals'){this._navigatePage(a==='go-tasks'?'tasks':'meals');return;}
   if(a==='add-task'){this._taskForm({person:el.dataset.person});return;}
   if(a==='toggle-task'){await this._toggleTask(el.dataset.entity,el.dataset.uid,el);return;}
   if(a==='edit-task'){this._taskForm({entity:el.dataset.entity,item:this._tasks[el.dataset.entity]?.find(i=>i.uid===el.dataset.uid)});return;}
@@ -339,7 +365,7 @@ class HearthglanceCard extends HTMLElement {
   this._openModal(item?(chores?'Edit chore':'Edit item'):(chores?'Add a chore':'Add to list'),`<form data-form="task"><div class="form-grid">${this._field(chores?'What needs doing?':'Item','title',item?.summary||'','text','full')}${chores?`<label class="field full">Assigned to<select name="person" ${item?'disabled':''}>${this._options(this._config.people.filter(p=>p.todo).map(p=>[p.id,p.name]),owner.id)}</select></label><label class="field">Repeat<select name="repeat">${this._options(Object.entries(repeatLabels),meta.repeat||'none')}</select></label>${this._field('Due date','due',item?.due?String(item.due).slice(0,10):dateKey(new Date()),'date')}`:''}</div>${this._formFooter(item?'Save changes':'Add',item?'delete-task':'')}</form>`);
  }
  _confirmDelete(kind,value){this._deleteTarget={kind,value};this._openModal('Delete '+(kind==='event'?'event':kind==='recipe'?'recipe':'item')+'?',`<form data-form="delete"><p>Delete <strong>${esc(kind==='event'?value.title:value.item.summary)}</strong>? This removes it from Home Assistant and its connected source, if any. This cannot be undone.</p>${this._formFooter('Delete')}</form>`);}
- _settings(){this._openModal('Make it yours',`<div class="settings-options"><label class="settings-row">Dark appearance<input type="checkbox" data-pref="dark" ${this._prefs.dark?'checked':''}></label><label class="settings-row">Meals on calendar<input type="checkbox" data-pref="showMeals" ${this._prefs.showMeals!==false?'checked':''}></label><div class="eyebrow" style="margin-top:12px">Other calendars</div>${this._config.calendars.filter(c=>c.auxiliary).map(c=>`<label class="settings-row">${esc(c.name)}<input type="checkbox" data-calendar="${c.entity}" ${!this._hidden.has(c.entity)?'checked':''}></label>`).join('')}<p class="section-note">Calendar filters and appearance are saved on this display. Your events, lists, recipes, and chores are stored in Home Assistant.</p><a class="btn" href="/config">Home Assistant settings</a></div>`);}
+ _settings(){this._openModal('Make it yours',`<div class="settings-options">${this._native?'':'<label class="settings-row">Dark appearance<input type="checkbox" data-pref="dark" '+(this._prefs.dark?'checked':'')+'></label>'}<label class="settings-row">Meals on calendar<input type="checkbox" data-pref="showMeals" ${this._prefs.showMeals!==false?'checked':''}></label><div class="eyebrow" style="margin-top:12px">Other calendars</div>${this._config.calendars.filter(c=>c.auxiliary).map(c=>`<label class="settings-row">${esc(c.name)}<input type="checkbox" data-calendar="${c.entity}" ${!this._hidden.has(c.entity)?'checked':''}></label>`).join('')}<p class="section-note">Calendar filters and appearance are saved on this display. Your events, lists, recipes, and chores are stored in Home Assistant.</p><a class="btn" href="/config">Home Assistant settings</a></div>`);}
  async _toggleTask(entity,uid,button){
   const item=this._tasks[entity]?.find(i=>i.uid===uid);if(!item)return;button.disabled=true;
   try{
@@ -393,3 +419,22 @@ Object.assign(HearthglanceCard.prototype,mobileMethods({icon,button,format,time,
 if(!customElements.get('hearthglance-card'))customElements.define('hearthglance-card',HearthglanceCard);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(c=>c.type==='hearthglance-card'))window.customCards.push({type:'hearthglance-card',name:'Hearthglance Family Dashboard',description:'A touch-friendly family calendar, chores, lists, recipes, and meal planner powered by Home Assistant.'});
+for(const [name,label,page] of nativeCards){
+ const tag=`hearthglance-${name}-card`;
+ class NativeCard extends HearthglanceCard {
+  setConfig(config){super.setConfig({...config,type:'custom:'+tag,page});}
+  static getStubConfig(hass){
+   const base={...HearthglanceCard.getStubConfig(hass),type:'custom:'+tag};
+   const todo=Object.keys(hass?.states||{}).find(id=>id.startsWith('todo.'))||'todo.family';
+   if(page==='header')return {type:base.type,weather:Object.keys(hass?.states||{}).find(id=>id.startsWith('weather.'))};
+   if(page==='tasks')return {type:base.type,people:[{id:'family',name:'Family',todo}]};
+   if(page==='list')return {type:base.type,lists:[{entity:todo,name:'Shopping'}]};
+   if(page==='recipes')return {type:base.type,recipes:hass?.states?.['sensor.hearthglance_recipes']?'sensor.hearthglance_recipes':todo};
+   if(page==='meals')base.calendars=[{entity:'calendar.meals',kind:'meals'}];
+   return base;
+  }
+  getCardSize(){return page==='header'?2:12;}
+ }
+ if(!customElements.get(tag))customElements.define(tag,NativeCard);
+ if(!window.customCards.some(c=>c.type===tag))window.customCards.push({type:tag,name:`Hearthglance ${label}`,description:'Reusable content card. Home Assistant provides navigation.'});
+}

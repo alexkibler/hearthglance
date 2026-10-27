@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0
+
+- Add reusable Home, Calendar, Chores, Lists, Meals, Recipes, and Header cards
+  for separate HA sidebar dashboards, with no in-card app navigation.
+- Delegate cross-view links and selected-day deep links to HA's router.
+- Adapt layouts to card width and limit each card's data subscriptions.
+- Show connection status as an accessible dot and give the weather forecast the
+  available header space.
+- Add a shared light/dark Hearthglance theme, separate dashboard examples, and
+  migration guide. Continue delivering one bundle through the same HACS resource.
+- Preserve the legacy full-screen card and all existing data/form workflows.
+
 ## 0.4.0
 
 - Optional native recipe library with a count entity, persistent structured records and private photos.

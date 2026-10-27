@@ -1,0 +1,52 @@
+# Add this as its own HA dashboard and show it in the sidebar.
+title: Home
+views:
+- title: Home
+  path: main
+  type: sections
+  max_columns: 4
+  theme: Hearthglance
+  sections:
+  - type: grid
+    column_span: 4
+    cards:
+    - type: custom:hearthglance-header-card
+      weather: weather.home
+      solar:
+        today: sensor.solar_energy_today
+        forecasts:
+        - sensor.solar_forecast_today
+        - sensor.solar_forecast_tomorrow
+      grid_options:
+        columns: full
+        rows: auto
+    - type: custom:hearthglance-home-card
+      household: Our family
+      storage_key: family-native
+      routes:
+        home: /family-home/main
+        calendar: /family-calendar/main
+        tasks: /family-chores/main
+        list: /family-lists/main
+        meals: /family-meals/main
+        recipes: /family-recipes/main
+      people:
+      - id: family
+        name: Family
+        todo: todo.family_chores
+      calendars:
+      - entity: calendar.family
+        name: Family
+        person: family
+      - entity: calendar.meals
+        name: Meal plan
+        person: family
+        kind: meals
+      lists:
+      - entity: todo.shopping
+        name: Shopping
+      recipes: sensor.hearthglance_recipes
+      weather: weather.home
+      grid_options:
+        columns: full
+        rows: auto
