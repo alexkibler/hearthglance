@@ -4,6 +4,8 @@ import {recipeMethods,recipeStyles} from './recipes.js';
 import {styles} from './styles.js';
 import {mobileStyles} from './mobile-styles.js';
 import {mobileMethods} from './mobile.js';
+import {richTextHTML,richTextField,richTextStyles} from './rich-text.js';
+import {mealRecipeMethods,mealRecipeStyles} from './meal-recipes.js';
 import {nativeCards, pageSubscriptions, navigateView, calendarLocation, nativeStyles} from './native.js';
 import {dateKey,localDate,addDays,midnight,weekStart,rangeFor,escapeHTML as esc,normalizeEvent,eventsOn,uniqueEvents,taskMeta,mealMeta,dueToday} from './model.js';
 
@@ -39,15 +41,17 @@ class HearthglanceCard extends HTMLElement {
   this.shadowRoot.addEventListener('click',e=>this._click(e));
   this.shadowRoot.addEventListener('submit',e=>this._submit(e));
   this.shadowRoot.addEventListener('change',e=>this._change(e));
-  this.shadowRoot.addEventListener('input',e=>this._recipeInput(e));
-  this.shadowRoot.addEventListener('keydown',e=>{if(e.key==='Escape'&&!this._busy)this._closeModal();});
+  this.shadowRoot.addEventListener('input',e=>{this._recipeInput(e);this._mealTitleInput(e);});
+  this.shadowRoot.addEventListener('mousedown',e=>{if(e.target.closest('[data-rich-command]'))e.preventDefault();});
+  this.shadowRoot.addEventListener('paste',e=>{if(e.target.closest('.rich-editor')){e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));}});
+  this.shadowRoot.addEventListener('keydown',e=>{this._mealRecipeKey(e);if(e.defaultPrevented)return;if(e.key==='Escape'&&!this._busy)this._closeModal();});
  }
  setConfig(config){
   const normalized=normalizeConfig(config);
   this._stop();this._config=normalized;this._native=Boolean(normalized.page);this.toggleAttribute('data-native',this._native);this._subscriptions=pageSubscriptions(normalized);this._pages=enabledPages(normalized);this._page=normalized.page||'home';this._list=0;
   this._view=this._page==='calendar'&&!this._mobile?'month':'week';
   if(this._native&&this._page==='calendar'){const location=calendarLocation(window.location?.search||'');if(location.date)this._date=location.date;if(location.view)this._view=this._mobile&&location.view==='day'?'week':location.view;}
-  this._events={};this._tasks={};this._recipes=[];this._recipeQuery='';this._recipeCategory='';this._recipeFavorites=false;this._errors.clear();this._forecast=[];
+  this._events={};this._tasks={};this._recipes=[];this._recipeReady=false;this._mealDraft=null;this._recipeQuery='';this._recipeCategory='';this._recipeFavorites=false;this._errors.clear();this._forecast=[];
   this._storageKey='hearthglance:'+normalized.storage_key;
   try{const prefs=JSON.parse(localStorage.getItem(this._storageKey)||'{}');this._prefs=prefs&&typeof prefs==='object'&&!Array.isArray(prefs)?prefs:{};}catch{this._prefs={};}
   this._hidden=new Set(Array.isArray(this._prefs.hidden)?this._prefs.hidden.filter(id=>typeof id==='string'):[]);
@@ -82,7 +86,7 @@ class HearthglanceCard extends HTMLElement {
   const entities=this._subscriptions.todos;
   for(const entity of entities){
    try{
-    const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._tasks[entity]=message.items||[];this._errors.delete(entity);this._renderMain();},{type:'todo/item/subscribe',entity_id:entity});
+    const unsub=await this._hass.connection.subscribeMessage(message=>{if(session!==this._sessionGeneration)return;this._tasks[entity]=message.items||[];if(entity===this._config.recipes)this._recipeReady=true;this._errors.delete(entity);this._renderMain();this._renderMealRecipes();},{type:'todo/item/subscribe',entity_id:entity});
     if(!this._started||session!==this._sessionGeneration){unsub();return;}this._unsubs.push(unsub);
    }catch(error){if(session!==this._sessionGeneration)return;this._errors.set(entity,'A task list is unavailable. Try Refresh.');}
   }
@@ -131,12 +135,12 @@ class HearthglanceCard extends HTMLElement {
  _renderShell(){
   if(!this._config)return;
   if(this._native){this._renderNativeShell();return;}
-  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><a class="brand ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">${icon('ha')}</a>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}</div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
+  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}${mealRecipeStyles}${richTextStyles}</style><div class="app ${this._mobile?'phone':''} ${this._prefs.dark?'theme-dark':''}"><nav class="rail" aria-label="Dashboard navigation"><a class="brand ha-home" href="/lovelace" title="Back to Home Assistant" aria-label="Back to Home Assistant">${icon('ha')}</a>${[['home','Home'],['calendar','Calendar'],['tasks','Chores'],['list','Lists'],['meals','Meals'],['recipes','Recipes']].filter(([id])=>this._pages.includes(id)).map(([id,label])=>button(`${icon(id)}<span>${label}</span>`,'page','nav',`data-page="${id}" aria-label="${label}"`)).join('')}<div class="rail-bottom">${button(icon('settings'),'settings','icon-btn','aria-label="Dashboard settings"')}</div></nav><div class="body"><header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header><main class="main"></main></div></div><div id="modal-root" class="${this._mobile?'phone-ui':''} ${this._prefs.dark?'theme-dark':''}"></div><div id="toast-root" aria-live="polite"></div>`;
   this._updateClock();this._renderWeather();this._renderMain();
  }
  _renderNativeShell(){
   const header=this._page==='header';
-  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}${nativeStyles}</style><div class="app native ${this._mobile?'phone':''}"><div class="body">${header?'<header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header>':'<main class="main"></main>'}</div></div><div id="modal-root" class="${this._mobile?'phone-ui':''}"></div><div id="toast-root" aria-live="polite"></div>`;
+  this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}${mealRecipeStyles}${richTextStyles}${nativeStyles}</style><div class="app native ${this._mobile?'phone':''}"><div class="body">${header?'<header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header>':'<main class="main"></main>'}</div></div><div id="modal-root" class="${this._mobile?'phone-ui':''}"></div><div id="toast-root" aria-live="polite"></div>`;
   this._syncNativeTheme();this._updateClock();this._renderMain();
  }
  _syncNativeTheme(){
@@ -275,6 +279,10 @@ class HearthglanceCard extends HTMLElement {
   if(this._suppressPhoneClick>Date.now())return;
   const el=event.target.closest('[data-action]');if(!el||el.disabled)return;
   const a=el.dataset.action;
+  if(a==='select-meal-recipe'){this._selectMealRecipe(el.dataset.uid);return;}
+  if(a==='unlink-meal-recipe'){this._mealRecipeId=null;this._renderMealRecipes();return;}
+  if(a==='create-meal-recipe'){this._createMealRecipe();return;}
+  if(a==='rich-command'){this.shadowRoot.querySelector('.rich-editor')?.focus();document.execCommand(el.dataset.richCommand,false);return;}
   if(a==='close-modal'){if(!this._busy)this._closeModal();return;}
   if(a==='phone-back'){if(this._page==='list'&&this._mobileListOpen){this._mobileListOpen=false;this._renderMain();}else this._phoneNavigate('home');return;}
   if(a==='phone-page'){this._phoneNavigate(el.dataset.page);return;}
@@ -340,13 +348,21 @@ class HearthglanceCard extends HTMLElement {
   this._focusTrap=e=>{if(e.key!=='Tab')return;const nodes=[...this.shadowRoot.querySelectorAll('.modal button:not(:disabled),.modal a[href],.modal input:not(:disabled),.modal select:not(:disabled),.modal textarea:not(:disabled)')];const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&this.shadowRoot.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&this.shadowRoot.activeElement===last){e.preventDefault();first.focus();}};
   this.shadowRoot.addEventListener('keydown',this._focusTrap);
  }
- _closeModal(){this.shadowRoot.querySelector('#modal-root').innerHTML='';this.shadowRoot.removeEventListener('keydown',this._focusTrap);this._previousFocus?.focus?.({preventScroll:true});}
+ _closeModal(){if(this._mealDraft){this._resumeMeal();return;}this.shadowRoot.querySelector('#modal-root').innerHTML='';this.shadowRoot.removeEventListener('keydown',this._focusTrap);this._previousFocus?.focus?.({preventScroll:true});}
  _field(label,name,value='',type='text',extra=''){return `<label class="field ${extra}">${esc(label)}<input type="${type}" name="${name}" value="${esc(value)}" ${name==='title'?'required maxlength="200"':(type==='date'||type==='time')?'required':''}></label>`;}
  _options(options,value){return options.map(([v,label])=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(label)}</option>`).join('');}
  _formFooter(label='Save',removeAction=''){return `<div class="form-error" role="alert" hidden></div><div class="modal-foot">${removeAction?button('Delete',removeAction,'btn danger'):''}${button('Cancel','close-modal','btn')}<button class="btn primary" type="submit">${label}</button></div>`;}
+ _isMeal(event){return event?.calendar.kind==='meals'||Boolean(mealMeta(event||{}).slot);}
+ _canEditEvent(event){return !event.calendar.google&&Boolean((this._hass.states[event.calendar.entity]?.attributes.supported_features&4)&&(!(event.rrule||event.recurrence_id)||event.recurrence_id));}
+ _googleEventLink(event){
+  if(!event.calendar.google)return '';
+  const value=event.htmlLink||event.url;
+  try{const url=new URL(value);if(url.protocol==='https:'&&!url.username&&!url.password&&(url.hostname==='calendar.google.com'||url.hostname==='www.google.com'&&url.pathname.startsWith('/calendar/')))return `<a class="btn primary" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">Edit in Google Calendar</a>`;}catch{}
+  return '<a class="btn primary" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noopener noreferrer">Open Google Calendar</a>';
+ }
  _eventForm(event,options={}){
-  if(event&&!(this._hass.states[event.calendar.entity]?.attributes.supported_features&4)){this._showEvent(event);return;}
-  const meal=options.meal||event?.calendar.kind==='meals';this._editingEvent=event;this._eventOptions=options;
+  if(event&&!this._canEditEvent(event)){this._showEvent(event);return;}
+  const meal=options.meal||this._isMeal(event);this._editingEvent=event;this._eventOptions=options;
   const writable=this._config.calendars.filter(c=>(this._hass.states[c.entity]?.attributes.supported_features&1)&&(meal?c.kind==='meals':c.kind!=='meals'));
   const selected=event?.calendar.entity||writable.find(c=>c.entity===this._config.default_calendar)?.entity||writable[0]?.entity;
   const start=event?.start||localDate(options.date||dateKey(this._date)),end=event?.end||addDays(start,1),allDay=event?.allDay??true;
@@ -354,16 +370,17 @@ class HearthglanceCard extends HTMLElement {
   const hour=new Date();hour.setMinutes(0,0,0);hour.setHours(hour.getHours()+1);
   const timeInput=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   const metadata=event?mealMeta(event):{};
-  const recipe=options.recipe;
-  this._openModal(event?(meal?'Edit meal':'Edit event'):(meal?'Plan a meal':'Add an event'),`<form data-form="event"><div class="form-grid">${this._field(meal?'What’s on the menu?':'Event title','title',event?.title||recipe?.summary||'','text','full')}${meal?`<label class="field">Meal<select name="slot">${this._options(['Breakfast','Lunch','Dinner','Snack'].map(x=>[x,x]),metadata.slot||options.slot||'Dinner')}</select></label>`:''}<label class="field ${meal?'':'full'}">${meal?'Calendar':'Who is it for?'}<select name="calendar" ${event?'disabled':''}>${this._options(writable.map(c=>[c.entity,c.name]),selected)}</select></label>${this._field('Starts','start_date',dateKey(start),'date')}${this._field('Ends (inclusive for all-day)','end_date',dateKey(dateEnd),'date')}<label class="checkbox-field field full"><span><input name="all_day" type="checkbox" ${allDay?'checked':''}> All-day event</span></label>${this._field('Start time','start_time',timeInput(event&&!event.allDay?start:hour),'time')}${this._field('End time','end_time',timeInput(event&&!event.allDay?end:new Date(hour.getTime()+3600000)),'time')}${!event?`<label class="field full">Repeat<select name="repeat">${this._options([['','Does not repeat'],['FREQ=DAILY','Every day'],['FREQ=WEEKLY','Every week'],['FREQ=MONTHLY','Every month']],'')}</select></label>`:''}${!meal?this._field('Location','location',event?.location||'','text','full'):''}<label class="field full">${meal?'Notes':'Notes (optional)'}<textarea name="notes">${esc(meal?metadata.notes||'':event?.description||'')}</textarea></label></div>${!writable.length?'<p class="form-error">No editable calendar is available.</p>':''}${this._formFooter(event?'Save changes':meal?'Add to meal plan':'Add event')}</form>`);
+  const recipe=options.recipe;this._mealRecipeId=recipe?.uid||metadata.recipe||null;
+  this._openModal(event?(meal?'Edit meal':'Edit event'):(meal?'Plan a meal':'Add an event'),`<form data-form="event"><div class="form-grid">${meal?this._mealTitleField(event?.title||recipe?.summary||''):this._field('Event title','title',event?.title||'','text','full')}${meal?`<label class="field">Meal<select name="slot">${this._options(['Breakfast','Lunch','Dinner','Snack'].map(x=>[x,x]),metadata.slot||options.slot||'Dinner')}</select></label>`:''}<label class="field ${meal?'':'full'}">${meal?'Calendar':'Who is it for?'}<select name="calendar" ${event?'disabled':''}>${this._options(writable.map(c=>[c.entity,c.name]),selected)}</select></label>${this._field('Starts','start_date',dateKey(start),'date')}${this._field('Ends (inclusive for all-day)','end_date',dateKey(dateEnd),'date')}<label class="checkbox-field field full"><span><input name="all_day" type="checkbox" ${allDay?'checked':''}> All-day event</span></label>${this._field('Start time','start_time',timeInput(event&&!event.allDay?start:hour),'time')}${this._field('End time','end_time',timeInput(event&&!event.allDay?end:new Date(hour.getTime()+3600000)),'time')}${!event?`<label class="field full">Repeat<select name="repeat">${this._options([['','Does not repeat'],['FREQ=DAILY','Every day'],['FREQ=WEEKLY','Every week'],['FREQ=MONTHLY','Every month']],'')}</select></label>`:''}${!meal?this._field('Location','location',event?.location||'','text','full'):''}${meal?`<label class="field full">Notes<textarea name="notes">${esc(metadata.notes||'')}</textarea></label>`:richTextField(event?.description||'')}</div>${!writable.length?'<p class="form-error">No editable calendar is available.</p>':''}${this._formFooter(event?'Save changes':meal?'Add to meal plan':'Add event')}</form>`);
+  this._renderMealRecipes();
   for(const name of ['start_time','end_time']){const f=this.shadowRoot.querySelector(`[name="${name}"]`);f.disabled=allDay;f.closest('.field').style.opacity=allDay?'.4':'1';}
  }
  _showEvent(event){
   if(!event)return;this._selectedEvent=event;
-  const features=this._hass.states[event.calendar.entity]?.attributes.supported_features||0,recurring=Boolean(event.rrule||event.recurrence_id),meta=mealMeta(event);
-  const notes=event.calendar.kind==='meals'?meta.notes||'':event.description;
+  const meal=this._isMeal(event),features=this._hass.states[event.calendar.entity]?.attributes.supported_features||0,recurring=Boolean(event.rrule||event.recurrence_id),meta=mealMeta(event);
+  const notes=meal?meta.notes||'':event.description;
   const linkedRecipe=this._recipeItems().find(r=>r.uid===meta.recipe);
-  this._openModal(event.calendar.kind==='meals'?'On the menu':'Event details',`<span class="tag" style="${this._calStyle(event.calendar)}">${esc(event.calendar.name)}${meta.slot?' · '+esc(meta.slot):''}</span><h3 class="detail-title">${esc(event.title)}</h3><div class="detail-line">${icon('calendar')}<span>${format(event.start,{weekday:'long',month:'long',day:'numeric',year:'numeric'})}${dateKey(event.start)!==dateKey(event.allDay?addDays(event.end,-1):event.end)?'<br>through '+format(event.allDay?addDays(event.end,-1):event.end,{month:'long',day:'numeric'}):''}<br>${event.allDay?'All day':esc(time(event.start)+' – '+time(event.end))}</span></div>${event.location?`<div class="detail-line">${icon('pin')}<span>${esc(event.location)}</span></div>`:''}${notes?`<div class="detail-notes">${esc(notes)}</div>`:''}${!(features&1)?'<p class="section-note">Subscribed calendar · edit events in the source calendar.</p>':''}${recurring?'<p class="section-note">Repeating event · manage the series in Home Assistant’s calendar.</p>':''}<div class="modal-foot">${features&2&&!recurring?button('Delete','delete-event','btn danger'):''}${button('Close','close-modal','btn')}${linkedRecipe?button('View recipe','meal-recipe','btn primary'):''}${features&4&&!recurring?button('Edit event','edit-event','btn primary'):''}${recurring?'<a class="btn" href="/calendar">Open HA calendar</a>':''}</div>`);
+  this._openModal(meal?'On the menu':'Event details',`<span class="tag" style="${this._calStyle(event.calendar)}">${esc(event.calendar.name)}${meta.slot?' · '+esc(meta.slot):''}</span><h3 class="detail-title">${esc(event.title)}</h3><div class="detail-line">${icon('calendar')}<span>${format(event.start,{weekday:'long',month:'long',day:'numeric',year:'numeric'})}${dateKey(event.start)!==dateKey(event.allDay?addDays(event.end,-1):event.end)?'<br>through '+format(event.allDay?addDays(event.end,-1):event.end,{month:'long',day:'numeric'}):''}<br>${event.allDay?'All day':esc(time(event.start)+' – '+time(event.end))}</span></div>${event.location?`<div class="detail-line">${icon('pin')}<span>${esc(event.location)}</span></div>`:''}${notes?`<div class="detail-notes ${meal?'':'rich-description'}">${meal?esc(notes):richTextHTML(notes)}</div>`:''}${!(features&1)?'<p class="section-note">Subscribed calendar · edit events in the source calendar.</p>':''}${recurring?'<p class="section-note">Repeating event · manage the series in the source calendar.</p>':''}<div class="modal-foot">${features&2&&!recurring?button('Delete','delete-event','btn danger'):''}${button('Close','close-modal','btn')}${linkedRecipe?button('View recipe','meal-recipe','btn primary'):''}${this._canEditEvent(event)?button(meal?'Edit meal':'Edit event','edit-event','btn primary'):''}${this._googleEventLink(event)}${recurring?'<a class="btn" href="/calendar">Open HA calendar</a>':''}</div>`);
  }
  _taskForm({person,entity,item}={}){
   const chores=!entity||this._config.people.some(p=>p.todo===entity);const owner=this._config.people.find(p=>entity&&p.todo===entity)||this._config.people.find(p=>p.id===person&&p.todo)||this._config.people.find(p=>p.todo);
@@ -389,16 +406,16 @@ class HearthglanceCard extends HTMLElement {
   try{
    if(this._hass.connected===false)throw new Error('Home Assistant is offline. Your changes have not been saved.');
    if(kind==='event'){
-    const editing=this._editingEvent,meal=this._eventOptions.meal||editing?.calendar.kind==='meals';
+    const editing=this._editingEvent,meal=this._eventOptions.meal||this._isMeal(editing);
     const entity=editing?.calendar.entity||get('calendar'),allDay=data.has('all_day');
     if(!get('title')||!entity||!get('start_date')||!get('end_date'))throw new Error('Add a title, calendar, and both dates.');
     const start=allDay?localDate(get('start_date')):localDate(get('start_date')+'T'+get('start_time'));
     const end=allDay?addDays(localDate(get('end_date')),1):localDate(get('end_date')+'T'+get('end_time'));
     if(!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start)throw new Error('The event must end after it starts.');
-    const payload={summary:get('title'),dtstart:allDay?dateKey(start):start.toISOString(),dtend:allDay?dateKey(end):end.toISOString(),description:meal?JSON.stringify({hearthglance:{slot:get('slot'),notes:get('notes'),recipe:this._eventOptions.recipe?.uid||mealMeta(editing||{}).recipe||null}}):get('notes'),location:get('location')};
+    const payload={summary:get('title'),dtstart:allDay?dateKey(start):start.toISOString(),dtend:allDay?dateKey(end):end.toISOString(),description:meal?JSON.stringify({hearthglance:{...mealMeta(editing||{}),slot:get('slot'),notes:get('notes'),recipe:this._mealRecipeId||null}}):richTextHTML(form.querySelector('.rich-editor').innerHTML),location:get('location')};
     if(get('repeat'))payload.rrule=get('repeat');
-    const command={type:editing?'calendar/event/update':'calendar/event/create',entity_id:entity,event:payload};if(editing)command.uid=editing.uid;
-    await this._hass.callWS(command);
+    const command={type:editing?'calendar/event/update':'calendar/event/create',entity_id:entity,event:payload};if(editing){if(!this._canEditEvent(editing))throw new Error('Edit this event in its source calendar.');command.uid=editing.uid;if(editing.recurrence_id)command.recurrence_id=editing.recurrence_id;}
+    await this._hass.callWS(command);this._loadCalendars();
    }else if(kind==='task'){
     const {entity:oldEntity,item}=this._editingTask,person=get('person');
     const entity=item?oldEntity:person?this._person(person).todo:oldEntity;
@@ -407,7 +424,7 @@ class HearthglanceCard extends HTMLElement {
     if(form.querySelector('[name=repeat]')){payload.description=JSON.stringify({hearthglance:{...taskMeta(item||{}),repeat:get('repeat')}});if(get('due'))payload.due_date=get('due');}
     await this._hass.callService('todo',item?'update_item':'add_item',payload,{entity_id:entity});
    }else if(kind==='recipe'){
-    await this._saveRecipe(get,data);
+    const recipe=await this._saveRecipe(get,data);if(this._mealDraft){this._resumeMeal(recipe);this._toast('Recipe saved. Review the meal, then add it to the plan.');return;}
    }else if(kind==='delete'){
     const {kind:targetKind,value}=this._deleteTarget;
     if(targetKind==='event')await this._hass.callWS({type:'calendar/event/delete',entity_id:value.calendar.entity,uid:value.uid});
@@ -420,6 +437,7 @@ class HearthglanceCard extends HTMLElement {
  }
  _toast(message){const root=this.shadowRoot.querySelector('#toast-root');root.innerHTML=`<div class="toast" role="status">${esc(message)}</div>`;clearTimeout(this._toastTimer);this._toastTimer=setTimeout(()=>{root.innerHTML='';},4500);}
 }
+Object.assign(HearthglanceCard.prototype,mealRecipeMethods({button}));
 Object.assign(HearthglanceCard.prototype,recipeMethods({icon,button}));
 Object.assign(HearthglanceCard.prototype,mobileMethods({icon,button,format,time,personStyle,weatherGlyph}));
 if(!customElements.get('hearthglance-card'))customElements.define('hearthglance-card',HearthglanceCard);

@@ -13,11 +13,11 @@ export function pageSubscriptions(config) {
     todos: [...new Set([
       ...(chores ? config.people.map(p => p.todo) : []),
       ...(lists ? config.lists.slice(0, page === 'home' ? 1 : undefined).map(l => l.entity) : []),
-      ...((!page || ['meals', 'recipes'].includes(page)) && config.recipes?.startsWith('todo.') ? [config.recipes] : []),
+      ...((!page || ['home', 'calendar', 'meals', 'recipes'].includes(page)) && config.recipes?.startsWith('todo.') ? [config.recipes] : []),
     ].filter(Boolean))],
     calendars: !page || ['home', 'calendar'].includes(page) ? config.calendars
       : page === 'meals' ? config.calendars.filter(c => c.kind === 'meals') : [],
-    recipes: !page || ['meals', 'recipes'].includes(page),
+    recipes: !page || ['home', 'calendar', 'meals', 'recipes'].includes(page),
     weather: !page || ['header', 'home', 'calendar', 'meals'].includes(page),
   };
 }

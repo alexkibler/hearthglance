@@ -65,7 +65,7 @@ test('standalone cards accept only their own data and do not subscribe to unrela
   assert.deepEqual(pageSubscriptions(lists), {todos: ['todo.shopping'], calendars: [], recipes: false, weather: false});
   const calendar = normalizeConfig({...full(), page: 'calendar'});
   assert.equal(pageSubscriptions(calendar).todos.length, 0);
-  assert.equal(pageSubscriptions(calendar).recipes, false);
+  assert.equal(pageSubscriptions(calendar).recipes, true);
   assert.throws(() => normalizeConfig({page: 'tasks'}), /to-do/);
   assert.throws(() => normalizeConfig({page: 'recipes'}), /recipe entity/);
 });

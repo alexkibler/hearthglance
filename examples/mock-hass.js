@@ -58,7 +58,7 @@ export function createDemoHass(){
   async callApi(method,path){const [resource,query]=path.split('?'),params=new URLSearchParams(query);return data({type:'calendar/event/subscribe',entity_id:resource.split('/')[1],start:params.get('start'),end:params.get('end')}).events;},
   async callWS(command){
    if(command.type.startsWith('hearthglance_recipes/')){
-    if(command.type.endsWith('/save')){const old=recipes.find(r=>r.id===command.recipe_id);if(old){if(old.revision!==command.revision)throw new Error('Recipe changed');Object.assign(old,command.recipe,{revision:old.revision+1});}else recipes.push({id:`recipe-${next++}`,revision:1,images:[],...command.recipe});}
+    if(command.type.endsWith('/save')){const old=recipes.find(r=>r.id===command.recipe_id);let id=old?.id;if(old){if(old.revision!==command.revision)throw new Error('Recipe changed');Object.assign(old,command.recipe,{revision:old.revision+1});}else{id=`recipe-${next++}`;recipes.push({id,revision:1,images:[],...command.recipe});}notify();return {recipe_id:id};}
     if(command.type.endsWith('/delete'))recipes=recipes.filter(r=>r.id!==command.recipe_id);
     notify();return {recipes:structuredClone(recipes),total:recipes.length};
    }

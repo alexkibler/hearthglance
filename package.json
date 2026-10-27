@@ -1,6 +1,6 @@
 {
   "name": "hearthglance-card",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "A native Home Assistant family dashboard for wall displays and phones.",
   "type": "module",
   "private": true,
@@ -16,7 +16,8 @@
     "package": "npm run check && python3 scripts/package.py"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "linkedom": "0.18.12"
   },
   "repository": {
     "type": "git",

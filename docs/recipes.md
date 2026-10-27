@@ -46,3 +46,15 @@ Removing the integration leaves its data files available for recovery. The old r
 ## Development checks
 
 Run the fictional importer fixtures with `python -m unittest discover -s tests -p test_recipe_import.py` in an environment with Pillow and `pillow-heif==1.8.1`. `test_recipe_backend.py` additionally exercises real HA Store persistence, repeat imports, revisions, count-only entities and permissions inside a Home Assistant Python environment. No personal exports belong in the repository or release archives.
+# Planning meals
+
+In **Plan a meal**, type a recipe name or ingredient to see matching recipes.
+Choose a suggestion with a click or Arrow Up/Down and Enter to link its recipe
+ID. You can also enter any meal name and save it as free text. A matching name
+does not implicitly link a recipe, and changing a linked name clears its link.
+
+When nothing matches, **Create Recipe for …** opens the full recipe editor with
+that name. Cancel returns to the unchanged meal draft. Save creates the recipe
+and returns to the draft with its ID linked; the meal is added only when you
+press **Add to meal plan**. The meal's calendar, dates, slot, repeat setting and
+notes survive both paths. Simply typing a meal name never creates a recipe.
