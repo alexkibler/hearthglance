@@ -57,6 +57,11 @@ apply it to individual views. It supplies light and dark modes for native HA
 surfaces and Hearthglance cards; the native cards follow the HA theme rather
 than a separate in-card appearance toggle.
 
+Select **Hearthglance Dark** for the original dark green appearance regardless
+of the display's system preference. Set it as both backend default themes with
+`frontend.set_theme` (`name` and `name_dark`) to use it across HA. Profiles with
+an explicit theme selection must also select it in their profile.
+
 The theme is a separate file because a HACS Dashboard repository installs the
 JavaScript resource, not HA theme configuration. It is included in the release
 ZIP and as a release asset. Updating the card through HACS does not overwrite

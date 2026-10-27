@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- Apply HA dark mode to native card content and dialogs, fixing pale calendar
+  events and date cells with unreadable text.
+- Match the original Hearthglance dark green palette and include a
+  **Hearthglance Dark** variant for an always-dark HA default.
+
 ## 0.5.0
 
 - Add reusable Home, Calendar, Chores, Lists, Meals, Recipes, and Header cards

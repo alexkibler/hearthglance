@@ -55,6 +55,7 @@ class HearthglanceCard extends HTMLElement {
  }
  set hass(hass){
   const previous=this._hass,wasConnected=previous?.connected;this._hass=hass;
+  this._syncNativeTheme();
   if(solarStatesChanged(this._config?.solar,previous,hass))this._renderSolar();
   if(!this._started){this._start();return;}
   this._updateConnection();
@@ -136,7 +137,12 @@ class HearthglanceCard extends HTMLElement {
  _renderNativeShell(){
   const header=this._page==='header';
   this.shadowRoot.innerHTML=`<style>${styles}${mobileStyles}${solarStyles}${recipeStyles}${nativeStyles}</style><div class="app native ${this._mobile?'phone':''}"><div class="body">${header?'<header class="topbar"><div class="clock"><div class="clock-time"></div><div class="clock-date"></div></div><div class="weather"></div><div class="connection" role="status"><span class="dot"></span><span class="connection-label">Connected to home</span></div></header>':'<main class="main"></main>'}</div></div><div id="modal-root" class="${this._mobile?'phone-ui':''}"></div><div id="toast-root" aria-live="polite"></div>`;
-  this._updateClock();this._renderMain();
+  this._syncNativeTheme();this._updateClock();this._renderMain();
+ }
+ _syncNativeTheme(){
+  if(!this._native)return;
+  const dark=Boolean(this._hass?.themes?.darkMode);
+  for(const selector of ['.app','#modal-root'])this.shadowRoot.querySelector(selector)?.classList.toggle('theme-dark',dark);
  }
  _navigatePage(page,options={}){
   if(!this._native){this._phoneNavigate(page);return;}
