@@ -20,7 +20,7 @@ export function recipeMethods({icon,button}){return {
   try{
    const unsub=await this._hass.connection.subscribeMessage(message=>{
     if(session!==this._sessionGeneration)return;
-    this._recipes=message.recipes||[];this._errors.delete('recipes');this._renderMain();
+    this._recipes=message.recipes||[];this._recipeReady=true;this._errors.delete('recipes');this._renderMain();this._renderMealRecipes?.();
    },{type:'hearthglance_recipes/subscribe',entity_id:this._config.recipes});
    if(this._started&&session===this._sessionGeneration)this._unsubs.push(unsub);else unsub();
   }catch(error){if(session===this._sessionGeneration){this._errors.set('recipes','The recipe library is unavailable. Check the Hearthglance Recipes integration, then Refresh.');this._renderMain();}}
@@ -40,8 +40,8 @@ export function recipeMethods({icon,button}){return {
   grid.innerHTML=this._recipeCards(matches);this.shadowRoot.querySelector('.recipe-result-count').textContent=`${matches.length} of ${items.length} recipes`;
  },
  _recipeInput(event){if(event.target.hasAttribute('data-recipe-query')){this._recipeQuery=event.target.value;this._renderRecipeResults();}},
- _recipeForm(recipe){
-  this._editingRecipe=recipe;const r=recipeData(recipe);
+ _recipeForm(recipe,initial={}){
+  this._editingRecipe=recipe;const r=recipe?recipeData(recipe):initial;
   const text=(label,name,rows=4)=>`<label class="field full">${esc(label)}<textarea name="${name}" rows="${rows}">${esc(r[name]||'')}</textarea></label>`;
   this._openModal(recipe?'Edit recipe':'Save a family favorite',`<form data-form="recipe"><div class="form-grid">${this._field('Recipe name','title',r.title||'','text','full')}${text('Description','text',2)}${this._field('Servings / yield','yield',r.yield||'')}${this._field('Prep time','prepTime',r.prepTime||'')}${this._field('Cook time','cookTime',r.cookTime||'')}${this._field('Total time','totalTime',r.totalTime||'')}${this._field('Categories (comma separated)','categories',(r.categories||[]).join(', '),'text','full')}${text('Ingredients','ingredients')}${text('Instructions','instructions',6)}${text('Notes','notes',3)}${text('Nutrition','nutrition',3)}${this._field('Source URL (optional)','link',r.link||'','url','full')}<label class="checkbox-field"><input type="checkbox" name="favorite" ${r.favorite?'checked':''}> Favorite</label><label class="checkbox-field"><input type="checkbox" name="wantToCook" ${r.wantToCook?'checked':''}> Want to cook</label></div>${this._formFooter(recipe?'Save changes':'Save recipe')}</form>`,true);
  },
@@ -57,11 +57,16 @@ export function recipeMethods({icon,button}){return {
   Object.assign(recipe,{categories:get('categories').split(',').map(c=>c.trim()).filter(Boolean),favorite:data.has('favorite'),wantToCook:data.has('wantToCook')});
   if(this._nativeRecipes()){
    const existing=this._editingRecipe;
-   await this._hass.callWS({type:'hearthglance_recipes/save',entity_id:this._config.recipes,recipe,...(existing?{recipe_id:existing.uid,revision:recipeData(existing).revision}:{})});
+   const result=await this._hass.callWS({type:'hearthglance_recipes/save',entity_id:this._config.recipes,recipe,...(existing?{recipe_id:existing.uid,revision:recipeData(existing).revision}:{})});
+   return {uid:result?.recipe_id||existing?.uid,summary:recipe.title,_recipe:recipe};
   }else{
+   const before=new Set(this._recipeItems().map(r=>r.uid));
    const payload={description:JSON.stringify({...recipeData(this._editingRecipe),...recipe,source:recipe.link})};
    if(this._editingRecipe){payload.item=this._editingRecipe.uid;payload.rename=recipe.title;}else payload.item=recipe.title;
    await this._hass.callService('todo',this._editingRecipe?'update_item':'add_item',payload,{entity_id:this._config.recipes});
+   if(this._editingRecipe)return {...this._editingRecipe,summary:recipe.title};
+   const result=await this._hass.callWS({type:'todo/item/list',entity_id:this._config.recipes});
+   return result.items.find(r=>!before.has(r.uid)&&r.summary===recipe.title);
   }
  },
  async _removeRecipe(recipe){

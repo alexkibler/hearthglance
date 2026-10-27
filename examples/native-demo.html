@@ -15,8 +15,8 @@ body.dark .host-header{background:#222d28;border-color:#364239}body.dark nav a[a
 <details class="host-header" open><summary>Home Assistant dashboards · fictional test data</summary><nav aria-label="Host dashboard navigation"></nav></details>
 <main><div id="failure" role="alert"></div><div class="cards"></div></main>
 <script type="module">
-import '../dist/hearthglance-card.js?v=0.5.1';
-import {config,createDemoHass} from './mock-hass.js';
+import '../dist/hearthglance-card.js?v=0.6.0';
+import {config,createDemoHass} from './mock-hass.js?v=0.6.0';
 const pages=[['home','Home'],['calendar','Calendar'],['chores','Chores'],['lists','Lists'],['meals','Meals'],['recipes','Recipes']];
 document.querySelector('.host-header').open=window.matchMedia('(min-width:701px)').matches;
 const query=new URLSearchParams(location.search),page=query.get('page')||'home';

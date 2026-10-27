@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+- Suggest recipes while typing a meal name, with mouse and keyboard selection.
+  Link the chosen recipe ID or save the meal as free text; typing a matching
+  name alone does not create or link a recipe.
+- Offer explicit recipe creation for unmatched names. Open the full editor,
+  then return to the meal draft after Save or Cancel, preserving its schedule
+  and notes. Saving a recipe links its ID without creating the meal until asked.
+- Reopen editable local meals in the same picker. Regular calendars that
+  support HA editing use a rich-text description editor with sanitized output.
+- Open Google events in Google Calendar, using an exact event URL when the
+  source supplies it or the calendar app otherwise. Mark Google calendars with
+  `google: true`; they are never updated inside Hearthglance.
+
 ## 0.5.1
 
 - Apply HA dark mode to native card content and dialogs, fixing pale calendar

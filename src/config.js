@@ -38,7 +38,7 @@ export function normalizeConfig(raw) {
     const person = c.person || people[0]?.id;
     if (!people.some(p => p.id === person)) throw new Error(`Hearthglance: calendar ${id} references an unknown person.`);
     if (c.kind && c.kind !== 'meals') throw new Error('Hearthglance: calendar kind can only be meals. Omit it for regular events.');
-    return {entity: id, name: String(c.name || id.split('.')[1].replaceAll('_', ' ')), person, kind: c.kind, auxiliary: Boolean(c.auxiliary)};
+    return {entity: id, name: String(c.name || id.split('.')[1].replaceAll('_', ' ')), person, kind: c.kind, auxiliary: Boolean(c.auxiliary), google: Boolean(c.google)};
   });
   distinct(calendars.map(c => c.entity), 'calendar entities');
   const lists = array(raw.lists, 'lists').map((l, i) => ({entity: entity(l.entity, 'todo', `lists[${i}].entity`), name: String(l.name || 'Shared list')}));
