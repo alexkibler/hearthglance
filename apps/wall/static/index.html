@@ -8,10 +8,17 @@
 <link rel="stylesheet" href="wall.css">
 <script type="module" src="wall.js"></script>
 </head>
-<body>
-<main id="wall" data-state="placeholder">
-<h1>Hearthglance</h1>
-<p>Wall Display is coming soon.</p>
+<body data-state="{{state}}" data-interval="{{interval}}">
+<main id="home" class="home">
+  <div class="clock"><time id="time"></time><div id="date"></div></div>
+  <div id="actions" class="actions">{{actions}}</div>
+  <p id="connection" class="connection" role="status" hidden>Reconnecting…</p>
 </main>
+<section id="slideshow" class="slideshow" hidden aria-label="Family Photos slideshow" aria-roledescription="slideshow">
+  <img class="slide" alt="" decoding="async">
+  <img class="slide" alt="" decoding="async">
+  <p class="slideshow-empty" hidden>No photos yet. Add some from Sidekick.</p>
+  <p class="slideshow-hint">Tap to return</p>
+</section>
 </body>
 </html>

@@ -29,6 +29,15 @@ jobs:
           path: apps/sidekick/static
           retention-days: 7
 
+  wall:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+      - run: node --test apps/wall/tests/*.test.mjs
+
   web-backend:
     needs: sidekick
     runs-on: ubuntu-latest
@@ -90,6 +99,8 @@ jobs:
           check /hearthglance/manifest.webmanifest 200
           check /hearthglance/wall/ 200
           check /hearthglance/wall/wall.js 200
+          check /hearthglance/wall/slideshow.js 200
+          check /hearthglance/wall/events 401
           check /hearthglance/api/session 401
           # The backend implements GET/POST only, so read headers from a real GET (HEAD returns 501).
           curl -fsS -D - -o /dev/null http://127.0.0.1:8136/hearthglance/wall/ | grep -q "frame-ancestors 'self' https://ha.example.test;"
