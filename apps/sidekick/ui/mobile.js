@@ -29,11 +29,12 @@ export function mobileMethods({icon,button,format,time,personStyle,weatherGlyph}
    const back=this._native?(listBack?button(icon('left'),'phone-back','phone-icon','aria-label="All lists"'):''):this._page==='home'?'<a class="phone-icon phone-home-mark ha-home" href="./" title="Hearthglance home" aria-label="Hearthglance home">'+icon('ha')+'</a>':button(icon('left'),'phone-back','phone-icon','aria-label="Back"');
    const header=this._native?(this._page==='list'?`<div class="native-list-tools">${listBack?`${back}<strong>${esc(titles.list)}</strong>`:''}${this._pageActions()}</div>`:''):`<header class="phone-header ${listBack?'has-list-back':''}">${back}<h1>${esc(titles[this._page]||'Family')}<small class="clock-time">${esc(format(new Date(),{hour:'numeric',minute:'2-digit'}))}</small></h1>${button(icon('settings'),'settings','phone-icon','aria-label="Card options"')}</header>`;
    const error=this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:'';
-   const content=this._page==='home'?this._phoneHome():this._page==='calendar'?this._phoneCalendar():this._page==='tasks'?this._phoneTasks():this._page==='list'?this._phoneLists():this._page==='recipes'?this._phoneRecipes():this._page==='photos'?'<hearthglance-photos></hearthglance-photos>':this._phoneMeals();
+   const content=this._page==='home'?this._phoneHome():this._page==='calendar'?this._phoneCalendar():this._page==='tasks'?this._phoneTasks():this._page==='list'?this._phoneLists():this._page==='recipes'?this._phoneRecipes():this._page==='photos'?'<div data-photos-slot></div>':this._phoneMeals();
    const toolbar=this._page==='calendar'?this._phoneCalendarTools():'';
    const canAdd=this._page!=='photos'&&(this._page!=='list'||this._mobileListOpen);
    const labels={home:'Add to your family',calendar:'Add event',tasks:'Add chore',list:'Add item',meals:'Plan dinner',recipes:'Add recipe'};
    main.innerHTML=header+toolbar+`<div class="phone-scroll">${error}${content}</div>`+(!this._native&&canAdd?button(icon('plus'),'phone-add','phone-fab',`aria-label="${labels[this._page]}"`):'');
+   this._mountPhotos?.(main);
    main.querySelector('.phone-scroll').scrollTop=scroll;
    const timeline=main.querySelector('.phone-timeline-scroll');
    if(timeline)timeline.scrollTop=timelineScroll??(dateKey(this._date)===dateKey(new Date())?Math.max(0,new Date().getHours()-1):8)*64;

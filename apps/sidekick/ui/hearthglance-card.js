@@ -2,7 +2,7 @@ import {solarForDate, solarStatesChanged, solarStyles} from './solar.js';
 import {normalizeConfig, enabledPages} from './config.js';
 import {recipeMethods,recipeStyles} from './recipes.js';
 import {styles,standaloneStyles} from './styles.js';
-import {photoStyles} from './photos.js';
+import {photoStyles,mountPhotos} from './photos.js';
 import {mobileStyles} from './mobile-styles.js';
 import {mobileMethods} from './mobile.js';
 import {richTextHTML,richTextField,richTextStyles} from './rich-text.js';
@@ -208,9 +208,11 @@ class HearthglanceCard extends HTMLElement {
   for(const nav of this.shadowRoot.querySelectorAll('.nav')){const active=nav.dataset.page===this._page;nav.classList.toggle('active',active);nav.setAttribute('aria-current',active?'page':'false');}
   const titles={photos:['SHARED MOMENTS','Family Photos','Pictures for everyone, and for the wall.'],home:['YOUR FAMILY, AT A GLANCE','A little more together.','The week ahead, and what matters today.'],calendar:['THE FAMILY SCHEDULE','Calendar','One place for everyone’s plans.'],tasks:['SMALL THINGS, SHARED','Chores & routines','A little teamwork goes a long way.'],list:['LESS TO REMEMBER','Shared lists','For the things you need, and the things to do.'],meals:['AROUND THE TABLE','Dinners','Good food. One less decision.'],recipes:['FAMILY FAVORITES','Recipes','Your family favorites, ready for the week.']};
   const [eyebrow,title,subtitle]=titles[this._page];
-  main.innerHTML=`${this._native?'':`<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div>${this._pageActions()}</div>`}${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._page==='photos'?'<hearthglance-photos></hearthglance-photos>':this._mealsPage()}`;
+  main.innerHTML=`${this._native?'':`<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><div class="subtitle">${subtitle}</div></div>${this._pageActions()}</div>`}${this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:''}${this._page==='home'||this._page==='calendar'?this._calendarPage():this._page==='tasks'?this._choresPage():this._page==='list'?this._listsPage():this._page==='recipes'?this._phoneRecipes():this._page==='photos'?'<div data-photos-slot></div>':this._mealsPage()}`;
+  mountPhotos(this,main);
   main.scrollTop=scroll;
  }
+ _mountPhotos(main){mountPhotos(this,main);}
  _pageActions(){
   if(this._page==='photos')return '';
   const primary=this._page==='recipes'?['Add recipe','add-recipe']:this._page==='tasks'?['Add chore','add-task']:this._page==='list'?['Add item','add-list-item']:this._page==='meals'?['Plan dinner','add-meal']:this._mobile&&this._page==='home'?['Add','phone-add']:['Add event','add-event'];
