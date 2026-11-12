@@ -127,7 +127,7 @@ class Photos:
     def describe(row):
         return {'id': row['id'], 'album': row['album'], 'created': row['created'],
             'width': row['width'], 'height': row['height'],
-            'thumb_width': row['thumb_width'], 'thumb_height': row['thumb_height'],
+            'thumb_width': row['thumb_width'], 'thumb_height': row['thumb_height'], 'source': row['format'],
             'display': f"./api/photos/{row['id']}/display", 'thumb': f"./api/photos/{row['id']}/thumb"}
 
     def list(self, album='family'):

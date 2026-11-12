@@ -13,12 +13,13 @@ There is one shared album in this release: `{"id": "family", "name": "Family Pho
   "created": 1794873600.123,
   "width": 2160, "height": 2880,
   "thumb_width": 384, "thumb_height": 512,
+  "source": "HEIF",
   "display": "./api/photos/5f0c1e9a8b7d6c5e4f3a2b1c/display",
   "thumb": "./api/photos/5f0c1e9a8b7d6c5e4f3a2b1c/thumb"
 }
 ```
 
-`width`/`height` describe the display image after rotation. `display` and `thumb` are relative URLs to resolve against the app base.
+`width`/`height` describe the display image after rotation. `source` is the uploaded format (`HEIF`, `JPEG` or `PNG`), which is useful for checking what the iPhone picker actually sent. `display` and `thumb` are relative URLs to resolve against the app base.
 
 ## Endpoints
 
