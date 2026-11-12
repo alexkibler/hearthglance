@@ -11,6 +11,16 @@ export const styles = `
 
 export const standaloneStyles = `
 .app{position:relative;height:100%;padding-top:var(--hg-safe-top,0px)}.app .body{height:100%;min-height:0}.page-head,.phone-fab{display:none!important}.app:not([data-page="home"]) .topbar{display:none}
+@media(min-width:601px){
+ .app{grid-template-rows:minmax(0,1fr)}
+ .rail{min-height:0;overflow-y:auto}
+ .rail>.brand,.rail>.nav,.rail>.rail-bottom{flex-shrink:0}
+}
+@media(min-width:601px) and (max-height:850px){
+ .rail{gap:6px;padding-top:16px;padding-bottom:12px}
+ .rail>.brand{margin-bottom:12px}
+ .rail>.nav{min-height:64px}
+}
 .app.phone .body{height:100%}.app.phone .phone-scroll{padding-bottom:max(16px,var(--hg-safe-bottom,0px));scrollbar-gutter:stable both-edges}.app.phone .main[data-view=schedule] .phone-timeline-scroll{padding-bottom:var(--hg-safe-bottom,0px)}
 .app.phone .phone-feature-grid{gap:14px 12px;padding:18px 16px 20px}.app.phone .phone-feature{gap:7px;min-height:76px}.app.phone .phone-feature-icon{width:56px;height:56px}.app.phone .phone-feature-icon svg{width:26px;height:26px}.phone-meta{display:flex;align-items:baseline;justify-content:center;gap:8px;font-size:12px;line-height:1.5;color:var(--muted)}.phone-header .clock-time{flex:none}.phone-header .clock-time small{font-size:10px}.phone-freshness{overflow:hidden;text-overflow:ellipsis;font-weight:400}.phone-freshness.offline{color:#f0c27c}
 .phone-ui .modal{max-height:calc(var(--hg-window,100vh) - var(--hg-safe-top,0px) - 16px);padding-bottom:calc(25px + var(--hg-safe-bottom,0px))}.phone-ui .modal-backdrop{padding-top:var(--hg-safe-top,0px)}
