@@ -144,6 +144,39 @@ class IdempotencyTests(Store):
             release.set(); worker.join(5)
         self.assertEqual(len(self.store.list()['photos']), 1)
 
+    def test_replay_racing_a_finishing_upload_never_publishes_twice(self):
+        """Codex #6 review: B looks up the key while A is finishing; there must be one row and one directory."""
+        resume_a, a_waiting, results, errors = threading.Event(), threading.Event(), {}, []
+        original_derive, original_find = self.store.derive, self.store.find
+        def paused_derive(*args):
+            a_waiting.set(); resume_a.wait(5); return original_derive(*args)
+        def find_then_let_a_finish(key):
+            found = original_find(key)
+            if threading.current_thread().name == 'B':
+                resume_a.set()
+                a.join(1)          # A cannot commit while B holds the lock between lookup and reservation
+            return found
+        def run(name):
+            try: results[name] = self.put(image_bytes())
+            except PhotoError as error: results[name] = error.status
+            except Exception as error: errors.append(error)
+        with patch.object(self.store, 'derive', side_effect=paused_derive), \
+             patch.object(self.store, 'find', side_effect=find_then_let_a_finish):
+            a = threading.Thread(target=run, args=('A',), name='A'); a.start(); a_waiting.wait(5)
+            b = threading.Thread(target=run, args=('B',), name='B'); b.start(); b.join(10); a.join(10)
+        self.assertEqual(errors, [])
+        self.assertEqual(results['B'], 409)
+        self.assertTrue(results['A'][1])
+        replay, created = self.put(image_bytes())
+        self.assertFalse(created); self.assertEqual(replay['id'], results['A'][0]['id'])
+        self.assertEqual(len(self.store.list()['photos']), 1); self.assertEqual(self.published(), [replay['id']])
+
+    def test_replay_requires_the_media_drive(self):
+        self.put(image_bytes())
+        (self.media/MARKER).unlink()
+        with self.assertRaises(PhotoError) as raised: self.put(image_bytes())
+        self.assertEqual(raised.exception.status, 503)
+
     def test_decode_concurrency_is_bounded(self):
         store = Photos(self.media, self.data/'bounded.sqlite3', decoders=2, isolate=False)
         active, peak, lock = [0], [0], threading.Lock()
@@ -322,7 +355,8 @@ class PhotoHTTPTests(Store):
         self.assertEqual([p['id'] for p in listing['photos']], [photo['id']])
         status, headers, image = self.request('GET', photo['display'][2:])
         self.assertEqual((status, headers['Content-Type']), (200, 'image/jpeg'))
-        self.assertTrue(headers['Cache-Control'].startswith('private'))
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertEqual(self.request('GET', photo['thumb'][2:])[1]['Cache-Control'], 'no-store')
         self.assertEqual(self.request('DELETE', 'api/photos/' + photo['id'])[0], 200)
         self.assertEqual(self.request('GET', photo['display'][2:])[0], 404)
         self.assertEqual(json.loads(self.request('GET', 'api/photos')[2])['photos'], [])

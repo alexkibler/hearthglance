@@ -25,8 +25,8 @@ There is one shared album in this release: `{"id": "family", "name": "Family Pho
 | Method | Path | Success | Notes |
 |---|---|---|---|
 | GET | `api/photos` | `200 {"album", "photos": [Photo], "version"}` | Oldest first. `version` increases on every upload or removal. |
-| GET | `api/photos/<id>/display` | `200 image/jpeg` | Longest edge ≤ 2880 px. `Cache-Control: private, max-age=31536000, immutable`. |
-| GET | `api/photos/<id>/thumb` | `200 image/jpeg` | Longest edge ≤ 512 px. Same caching. |
+| GET | `api/photos/<id>/display` | `200 image/jpeg` | Longest edge ≤ 2880 px. `Cache-Control: no-store`. |
+| GET | `api/photos/<id>/thumb` | `200 image/jpeg` | Longest edge ≤ 512 px. `Cache-Control: no-store`. |
 | POST | `api/photos` | `201 {"photo"}` new, `200 {"photo"}` repeat | Raw image bytes as the body (not multipart). Requires `Content-Length` and `Idempotency-Key`. |
 | DELETE | `api/photos/<id>` | `200 {"removed": "<id>"}` | Removes the catalog row first, then the files. |
 
@@ -37,6 +37,9 @@ There is one shared album in this release: `{"id": "family", "name": "Family Pho
 - Limits: 50 MB per file and 60 megapixels. Chunked transfer encoding is rejected.
 - Derivatives are rotated upright, transparent areas are flattened, and they're saved as JPEG with no EXIF, GPS, camera or XMP metadata. Only the colour profile is kept. The original upload is not retained.
 - A photo appears in listings only after both derivatives are stored and its catalog row is committed. Interrupted or failed uploads never appear and leave no files behind.
+- A replay returns the stored photo only while the media drive is available; otherwise it gets `503`.
+
+Photo responses are `no-store`, so a removed photo, or one requested after sign-out, is never served from the browser cache. Wall preloads the next slide itself to keep transitions smooth.
 
 ### Errors
 
