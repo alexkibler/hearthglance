@@ -2,6 +2,7 @@ import './ui/hearthglance-card.js';
 import {Bridge,snapshotRange} from './bridge.js';
 import {PWA} from './pwa.js';
 import {OfflineStore} from './offline-store.js';
+import {PhotoLibrary} from './ui/photos.js';
 
 const root=document.querySelector('#app'),login=document.querySelector('#login'),status=document.querySelector('#status');
 const offline=new OfflineStore();
@@ -38,6 +39,11 @@ function mount(config,snapshot,online=true) {
   // Standalone page routing, not HA's router. Use the same UI in an iframe.
   card.setConfig({...config,routes:undefined,page:undefined,type:'custom:hearthglance-card'});
   card._prefs.dark=card._prefs.dark!==false;
+  // Photos are Hearthglance-owned and online-only; the tile appears when the server has photo storage configured.
+  if(session.photos){
+    card._pages=[...card._pages.filter(p=>p!=='settings'),'photos','settings'];
+    card._photoLibrary=new PhotoLibrary({csrf:session.csrf,unauthorized:()=>{if(active())forgetOffline().then(showLogin);}});
+  }
   const page=new URLSearchParams(location.search).get('page');
   if(card._pages.includes(page))card._page=page;
   card._view=card._page==='calendar'?'month':'week';

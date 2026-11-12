@@ -355,7 +355,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/api/'):
             key, ha = self.identity()
             if path == '/api/session':
-                self.send_json({'config':self.app.config,'csrf':self.app.sessions.records[key]['csrf'],'cache_id':cache_id(key)});return
+                self.send_json({'config':self.app.config,'csrf':self.app.sessions.records[key]['csrf'],'cache_id':cache_id(key),
+                    'photos':self.app.photos is not None});return
             if path == '/api/snapshot':
                 result = self.app.data.snapshot(ha,key,query.get('start'),query.get('end'),query.get('refresh')=='1')
                 known = json.loads(query.get('known','{}'))
