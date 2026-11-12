@@ -371,8 +371,8 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r'/api/photos/([a-f0-9]{24})/(display|thumb)',path)
             if match:
                 body = self.photo_store().file(*match.groups())
-                # Private to the signed-in browser; a photo id never changes content.
-                self.respond_headers(200,'image/jpeg',len(body),cache='private, max-age=31536000, immutable')
+                # no-store: a removed photo or a signed-out browser must never be served from the HTTP cache.
+                self.respond_headers(200,'image/jpeg',len(body))
                 self.wfile.write(body);return
             match = re.fullmatch(r'/api/hearthglance_recipes/image/([a-f0-9]{64})/(photo|thumb)',path)
             if match:

@@ -151,14 +151,16 @@ class Photos:
         if not IDEMPOTENCY_KEY.fullmatch(key or ''): raise PhotoError(400, 'Missing or invalid Idempotency-Key.')
         if not isinstance(length, int) or not 0 < length <= MAX_BYTES:
             raise PhotoError(413, f'Photos must be smaller than {MAX_BYTES // (1024*1024)} MB.')
-        existing = self.find(key)
-        if existing: return existing, False
+        root = self.root()                          # a replay is only reported as stored while the drive is present
+        # Lookup and reservation happen under one lock, and publish() commits under the same lock before the
+        # reservation is released, so a key is always either committed, in flight, or free; never two uploads.
         with self.lock:
+            existing = self.find(key)
+            if existing: return existing, False
             if key in self.inflight: raise PhotoError(409, 'This photo is still uploading. Try again shortly.')
             self.inflight.add(key)
-        root, staged, work = None, None, None
+        staged, work = None, None
         try:
-            root = self.root()
             if shutil.disk_usage(root).free < length * 4 + FREE_RESERVE:
                 raise PhotoError(507, 'The photo drive is full.')
             token = secrets.token_hex(12)
@@ -268,8 +270,14 @@ class Photos:
             os.replace(work, target)                    # 1. files become visible under photos/
             self.before_commit(photo)                   # test hook for crash injection
             with self.connect() as db:                  # 2. catalog row makes the photo visible to clients
-                db.execute('INSERT INTO photos VALUES (?,?,?,?,?,?,?,?,?)', (photo, ALBUM['id'], key, self.clock(),
-                    size[0], size[1], thumb[0], thumb[1], kind))
+                try:
+                    db.execute('INSERT INTO photos VALUES (?,?,?,?,?,?,?,?,?)', (photo, ALBUM['id'], key, self.clock(),
+                        size[0], size[1], thumb[0], thumb[1], kind))
+                except sqlite3.IntegrityError:          # defensive: never leave a second directory for one key
+                    shutil.rmtree(target, ignore_errors=True)
+                    row = db.execute('SELECT * FROM photos WHERE idempotency=?', (key,)).fetchone()
+                    if not row: raise
+                    return self.describe(row)
                 row = db.execute('SELECT * FROM photos WHERE id=?', (photo,)).fetchone()
         self.changes.publish()
         return self.describe(row)
