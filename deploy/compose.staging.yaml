@@ -1,0 +1,38 @@
+# Local staging project for the backend image. Separate from any live deployment.
+#   HG_IMAGE=hearthglance:dev docker compose -p hearthglance-staging -f deploy/compose.staging.yaml up -d
+# Paths come from a private, untracked env file (see deploy/README.md). Never commit real values.
+services:
+  hearthglance:
+    image: ${HG_IMAGE:?set a tested backend image}
+    restart: unless-stopped
+    user: ${HG_UID:-10001}:${HG_GID:-10001}
+    ports:
+      - "127.0.0.1:${HG_PORT:-8136}:8080"
+    environment:
+      HA_URL: ${HA_URL:-http://ha.invalid:8123}
+      HA_PUBLIC_URL: ${HA_PUBLIC_URL:-https://ha.invalid}
+      HG_PUBLIC_URL: ${HG_PUBLIC_URL:-http://127.0.0.1:8136/hearthglance/}
+      HG_FRAME_ANCESTORS: ${HG_FRAME_ANCESTORS:-}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    tmpfs:
+      - /tmp:size=16m
+    volumes:
+      - type: bind
+        source: ${HG_CONFIG_DIR:-./fixtures}
+        target: /config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HG_DATA_DIR:?set HG_DATA_DIR to a provisioned data directory}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HG_MEDIA_DIR:?set HG_MEDIA_DIR to a provisioned media directory}
+        target: /media
+        bind:
+          create_host_path: false

@@ -84,6 +84,15 @@ test('app shell and cached photos work offline, with photo caches isolated by ac
  assert.equal(await w.fetch('https://app.test/api/states'),undefined);
 });
 
+test('Wall routes always use the network and never enter the Sidekick shell or photo caches',async()=>{
+ const w=worker();await w.dispatch('install');await w.dispatch('activate');
+ const before=JSON.stringify(await Promise.all((await w.store.keys()).map(async name=>[name,(await (await w.store.open(name)).keys()).map(r=>r.url)])));
+ for(const path of ['wall','wall/','wall/?kiosk=1','wall/wall.js','wall/wall.css','wall/events','wall/photos/next'])
+  assert.equal(await w.fetch(path),undefined,path);
+ assert.equal(await w.fetch('wall/',{headers:{Accept:'text/event-stream'}}),undefined);
+ const after=JSON.stringify(await Promise.all((await w.store.keys()).map(async name=>[name,(await (await w.store.open(name)).keys()).map(r=>r.url)])));
+ assert.equal(after,before);
+});
 test('private caches are bounded and oversized images are not persisted',async()=>{
  const w=worker();for(let index=0;index<205;index++)await w.fetch(photo(index));
  assert.equal((await (await w.store.open('hearthglance-private-thumbnails-v1')).keys()).length,200);

@@ -1,0 +1,16 @@
+{
+  "household": "Fixture household",
+  "people": [
+    {"id": "family", "name": "Family", "initial": "F", "color": "#3f7d5a", "pale": "#dcebe1", "todo": "todo.fixture_family"},
+    {"id": "sam", "name": "Sam", "initial": "S", "color": "#4a6fa5", "pale": "#dde6f3", "todo": "todo.fixture_sam"}
+  ],
+  "calendars": [
+    {"entity": "calendar.fixture_family", "name": "Family", "person": "family", "google": false},
+    {"entity": "calendar.fixture_dinners", "name": "Dinners", "person": "family", "google": false}
+  ],
+  "lists": [{"name": "Groceries", "entity": "todo.fixture_groceries"}],
+  "recipes": "sensor.fixture_recipes",
+  "weather": "weather.fixture",
+  "default_calendar": "calendar.fixture_family",
+  "storage_key": "hearthglance-fixture"
+}

@@ -5,4 +5,4 @@ Python services that connect Hearthglance to Home Assistant. The initial source 
 - `web/` contains the API and the HTTP integration tests. The existing server expects Sidekick's built `static/` tree beside `app.py`.
 - `kobo/` contains the Pillow renderer and LAN service. It serves PNG pages and offline packs to the B/W plugin.
 
-The target deployment serves Sidekick and Wall from the main backend image, with the Kobo renderer kept as a LAN-only companion during migration. Config and credentials are mounted at runtime. Keep session state, snapshot caches and photo storage outside the source tree. The source snapshot does not switch or replace the running deployment.
+The root `Dockerfile` builds the main backend image with Sidekick and Wall included (see `deploy/README.md` for mounts and environment). The target deployment serves Sidekick and Wall from that image, with the Kobo renderer kept as a LAN-only companion during migration. Config and credentials are mounted at runtime. Keep session state, snapshot caches and photo storage outside the source tree. The source snapshot does not switch or replace the running deployment.

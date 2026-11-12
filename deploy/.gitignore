@@ -1,0 +1,6 @@
+# Private deployment values never enter Git.
+*.env
+*.local
+*.local.*
+data/
+media/

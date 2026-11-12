@@ -1,0 +1,16 @@
+# Allowlist: only source needed for the backend image enters the build context.
+# Private config, state, secrets, media and build output never do.
+*
+!Dockerfile
+!apps/sidekick/package.json
+!apps/sidekick/package-lock.json
+!apps/sidekick/*.js
+!apps/sidekick/*.mjs
+!apps/sidekick/ui/
+!apps/sidekick/static/index.html
+!apps/sidekick/static/app.css
+!apps/sidekick/static/icon.svg
+!apps/sidekick/static/manifest.webmanifest
+!apps/wall/static/
+!backend/web/app.py
+!backend/web/requirements.txt

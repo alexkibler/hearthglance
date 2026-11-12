@@ -1,0 +1,105 @@
+name: Standalone
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+# Synthetic fixtures only. No private config, state, media or credentials in CI or artifacts.
+jobs:
+  sidekick:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/sidekick
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/sidekick/package-lock.json
+      - run: npm ci
+      # Tests read the built shell (icons, sw.js), so build first.
+      - run: npm run build
+      - run: npm test
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: sidekick-static
+          path: apps/sidekick/static
+          retention-days: 7
+
+  web-backend:
+    needs: sidekick
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v7.0.0
+        with:
+          name: sidekick-static
+          path: backend/web/static
+      - run: pip install -r backend/web/requirements.txt
+      - run: python -m unittest discover -s tests -v
+        working-directory: backend/web
+
+  kobo-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.13'
+      - run: pip install -r backend/kobo/requirements.txt
+      - run: python -m unittest discover -p 'test_*.py' -v
+        working-directory: backend/kobo
+
+  bw-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+      # The behavior tests need a KOReader runtime (setupkoenv); CI checks that every file compiles under LuaJIT.
+      - run: |
+          for file in apps/bw/hearthglance.koplugin/*.lua apps/bw/*.lua; do
+            luajit -bl "$file" > /dev/null || { echo "::error file=$file::LuaJIT could not compile"; exit 1; }
+          done
+
+  image:
+    needs: [sidekick, web-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: docker build -t hearthglance:ci .
+      - name: Smoke test with fixture config
+        run: |
+          mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/media"
+          sudo chown 10001:10001 "$RUNNER_TEMP/data" "$RUNNER_TEMP/media"
+          docker run -d --name hg --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp:size=16m -p 127.0.0.1:8136:8080 \
+            -e HA_URL=http://ha.invalid:8123 -e HA_PUBLIC_URL=https://ha.invalid \
+            -e HG_PUBLIC_URL=http://127.0.0.1:8136/hearthglance/ -e HG_FRAME_ANCESTORS=https://ha.example.test \
+            -v "$PWD/deploy/fixtures:/config:ro" -v "$RUNNER_TEMP/data:/data" -v "$RUNNER_TEMP/media:/media" \
+            hearthglance:ci
+          for i in $(seq 30); do curl -fs http://127.0.0.1:8136/health && break; sleep 1; done
+          check() { code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8136$1"); echo "$1 $code"; [ "$code" = "$2" ]; }
+          check /hearthglance/ 200
+          check /hearthglance/sw.js 200
+          check /hearthglance/manifest.webmanifest 200
+          check /hearthglance/wall/ 200
+          check /hearthglance/wall/wall.js 200
+          check /hearthglance/api/session 401
+          # The backend implements GET/POST only, so read headers from a real GET (HEAD returns 501).
+          curl -fsS -D - -o /dev/null http://127.0.0.1:8136/hearthglance/wall/ | grep -q "frame-ancestors 'self' https://ha.example.test;"
+          docker exec hg sh -c 'touch /app/probe' && exit 1 || echo "root filesystem is read-only"
+      - name: Startup fails clearly without mounts
+        run: |
+          out=$(docker run --rm --read-only -e HA_URL=x -e HA_PUBLIC_URL=x -e HG_PUBLIC_URL=http://x/hg/ hearthglance:ci 2>&1 || true)
+          echo "$out"; echo "$out" | grep -q "config not found"
+          out=$(docker run --rm --read-only -e HA_URL=x -e HA_PUBLIC_URL=x -e HG_PUBLIC_URL=http://x/hg/ \
+            -v "$PWD/deploy/fixtures:/config:ro" hearthglance:ci 2>&1 || true)
+          echo "$out"; echo "$out" | grep -q "data directory /data is not writable"
+      - if: always()
+        run: docker logs hg 2>&1 | tail -20; docker rm -f hg || true

@@ -242,14 +242,33 @@ class Data:
             self.cache = {k:v for k,v in self.cache.items() if k[0] != key}
 
 
+def frame_ancestors(value):
+    """CSP frame-ancestors: same origin plus explicitly configured HTTPS origins only."""
+    origins = []
+    label = r'(?!-)[a-z0-9-]{1,63}(?<!-)'
+    for item in (value or '').split():
+        parts = urllib.parse.urlsplit(item)
+        try: port = parts.port
+        except ValueError: port = -1
+        host = parts.hostname or ''
+        if (parts.scheme != 'https' or port == -1 or parts.path not in ('','/') or parts.query or parts.fragment
+                or parts.username is not None or not re.fullmatch(rf'{label}(\.{label})*', host)):
+            raise ValueError('HG_FRAME_ANCESTORS accepts space-separated exact https:// origins only')
+        origins.append(f'https://{host}' + (f':{port}' if port not in (None, 443) else ''))
+    return ' '.join(["'self'", *dict.fromkeys(origins)])
+
+
 class Application:
-    def __init__(self, config, ha_url, ha_public, public_url, state, static):
+    def __init__(self, config, ha_url, ha_public, public_url, state, static, wall=None, framing=''):
         self.config, self.ha_url, self.ha_public = config, ha_url.rstrip('/'), ha_public.rstrip('/')
         self.public = public_url.rstrip('/')+'/'
         self.origin = urllib.parse.urlsplit(self.public)._replace(path='',query='',fragment='').geturl().rstrip('/')
         self.prefix = urllib.parse.urlsplit(self.public).path.rstrip('/')
         self.sessions = Sessions(state, self.ha_url, self.public)
         self.data, self.static = Data(config), Path(static)
+        self.wall = Path(wall) if wall else Path(static).parent/'wall'
+        self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -267,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
-        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        self.send_header('Content-Security-Policy',self.app.csp)
         for key,value in (extra or {}).items(): self.send_header(key,value)
         self.end_headers()
 
@@ -341,6 +360,15 @@ class Handler(BaseHTTPRequestHandler):
                 body, content_type = ha.http(path,binary=True)
                 self.respond_headers(200,content_type,len(body));self.wfile.write(body);return
             self.send_error(404);return
+        if path == '/wall':
+            self.redirect(self.app.public+'wall/');return
+        if path.startswith('/wall/'):
+            # Wall is a separate entry point outside the Sidekick service-worker shell.
+            asset = path[len('/wall/'):] or 'index.html'
+            if asset not in {'index.html','wall.css','wall.js'}: self.send_error(404);return
+            body = (self.app.wall/asset).read_bytes()
+            self.respond_headers(200,mimetypes.guess_type(asset)[0] or 'application/octet-stream',len(body))
+            self.wfile.write(body);return
         asset = 'index.html' if path == '/' else path.lstrip('/')
         if asset not in {'index.html','app.js','app.css','sw.js','manifest.webmanifest','icon.svg',
                         'icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'}:
@@ -387,9 +415,24 @@ def serve(app, host='0.0.0.0', port=8080):
     return server
 
 
+def runtime(env, root):
+    """Resolve and check runtime mounts before serving. Defaults keep the pre-monorepo layout."""
+    config_path = Path(env.get('HG_CONFIG', '/app/config.json'))
+    sessions = Path(env.get('HG_SESSIONS', '/state/sessions.json'))
+    missing = [name for name in ('HA_URL','HA_PUBLIC_URL','HG_PUBLIC_URL') if not env.get(name)]
+    if missing: raise SystemExit('Hearthglance: set '+', '.join(missing))
+    if not config_path.is_file(): raise SystemExit(f'Hearthglance: config not found at {config_path}; mount it read-only')
+    try: config = json.loads(config_path.read_text())
+    except (OSError, ValueError) as error: raise SystemExit(f'Hearthglance: cannot read config {config_path}: {error}') from None
+    data_dir = sessions.parent
+    if not data_dir.is_dir(): raise SystemExit(f'Hearthglance: data directory {data_dir} is missing; provision it before startup')
+    if not os.access(data_dir, os.W_OK): raise SystemExit(f'Hearthglance: data directory {data_dir} is not writable by uid {os.getuid()}')
+    try: frame_ancestors(env.get('HG_FRAME_ANCESTORS',''))
+    except ValueError as error: raise SystemExit(f'Hearthglance: {error}') from None
+    return Application(config, env['HA_URL'], env['HA_PUBLIC_URL'], env['HG_PUBLIC_URL'], sessions,
+        Path(env.get('HG_STATIC', root/'static')), Path(env.get('HG_WALL', root/'wall')),
+        env.get('HG_FRAME_ANCESTORS',''))
+
+
 if __name__ == '__main__':
-    root = Path(__file__).resolve().parent
-    app = Application(json.loads(Path(os.environ.get('HG_CONFIG','/app/config.json')).read_text()),
-        os.environ['HA_URL'], os.environ['HA_PUBLIC_URL'], os.environ['HG_PUBLIC_URL'],
-        '/state/sessions.json', root/'static')
-    serve(app).serve_forever()
+    serve(runtime(os.environ, Path(__file__).resolve().parent)).serve_forever()
