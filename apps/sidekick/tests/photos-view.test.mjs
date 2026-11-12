@@ -33,3 +33,14 @@ test('the card reuses one Photos view across renders, so an open preview survive
  render('two');                                                  // coming back starts fresh and reloads
  assert.equal(view.preview,null);assert.equal(library.loads,2);assert.equal(library.listeners.size,1);
 });
+
+test('opening the app directly on Photos loads the album once the card is attached',()=>{
+ const library=fakeLibrary(),host={_photoLibrary:library};
+ PhotosView.prototype.getRootNode=function(){return this.isConnected?{host}:this;};
+ const detached=document.createElement('main');detached.innerHTML='<div data-photos-slot></div>';
+ mountPhotos(host,detached);                                   // first render, before the card is in the page
+ assert.equal(library.loads,0);
+ document.body.append(detached);                               // the card is attached
+ assert.equal(library.loads,1);assert.ok(host._photosView.querySelector('.photo-grid'));
+ detached.remove();
+});

@@ -261,19 +261,20 @@ def frame_ancestors(value):
 
 
 class Application:
-    def __init__(self, config, ha_url, ha_public, public_url, state, static, wall=None, framing='', photos=None):
+    def __init__(self, config, ha_url, ha_public, public_url, state, static, framing='', photos=None):
         self.config, self.ha_url, self.ha_public = config, ha_url.rstrip('/'), ha_public.rstrip('/')
         self.public = public_url.rstrip('/')+'/'
         self.origin = urllib.parse.urlsplit(self.public)._replace(path='',query='',fragment='').geturl().rstrip('/')
         self.prefix = urllib.parse.urlsplit(self.public).path.rstrip('/')
         self.sessions = Sessions(state, self.ha_url, self.public)
         self.data, self.static = Data(config), Path(static)
-        self.wall = Path(wall) if wall else Path(static).parent/'wall'
         self.photos = photos
-        # Each Wall stream holds one server thread; bound them and recycle long-lived ones.
-        self.wall_streams = threading.BoundedSemaphore(8)
-        self.wall_heartbeat, self.wall_lifetime, self.wall_interval = 25, 900, 12
-        self.wall_idle = 0                      # minutes before the idle slideshow starts; 0 is off
+        # Each photo event stream holds one server thread (only while a slideshow plays); bound and recycle them.
+        self.event_streams = threading.BoundedSemaphore(8)
+        self.event_heartbeat, self.event_lifetime = 25, 900
+        # Slideshow settings sent to the dashboard: seconds per photo, and minutes of inactivity before a
+        # wall-sized screen starts it on its own (0 is off).
+        self.slideshow_interval, self.slideshow_idle = 12, 0
         self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
@@ -314,35 +315,14 @@ class Handler(BaseHTTPRequestHandler):
         key = self.app.sessions.key(self.cookie('hg_session'))
         return key, HomeAssistant(self.app.ha_url, lambda:self.app.sessions.access(key))
 
-    def signed_in(self):
-        try: self.app.sessions.key(self.cookie('hg_session')); return True
-        except LoginRequired: return False
-
-    def wall_page(self):
-        """Server-rendered Wall shell. The small module script adds the clock, live updates and the slideshow."""
-        if not self.signed_in():
-            actions = '<a class="play" href="../auth/login?next=wall" target="_top">Sign in with Home Assistant</a>'
-            state = 'signed-out'
-        elif not self.app.photos or not self.app.photos.available():
-            actions = '<p class="notice" role="status">Photos are unavailable. Check the photo drive.</p>'
-            state = 'unavailable'
-        else:
-            count = len(self.app.photos.list()['photos'])
-            label = 'No photos yet' if not count else f'{count} photo' + ('' if count == 1 else 's')
-            actions = f'<button id="play" class="play" type="button">Play slideshow</button><p id="count" class="count">{label}</p>'
-            state = 'ready'
-        template = (self.app.wall/'index.html').read_text()
-        return (template.replace('{{state}}', state).replace('{{actions}}', actions)
-            .replace('{{interval}}', str(self.app.wall_interval)).replace('{{idle}}', str(self.app.wall_idle)))
-
-    def wall_events(self, key, changes):
+    def photo_events(self, key, changes):
         """Server-Sent Events: small change notices only. Clients fetch api/photos after each one.
 
         `key` is the session already verified by the route. Everything after acquiring a slot runs inside the
         try/finally, so no setup failure can leak stream capacity."""
-        streams = self.app.wall_streams
+        streams = self.app.event_streams
         if not streams.acquire(blocking=False):
-            self.send_json({'error':'Too many Wall connections.'},503);return
+            self.send_json({'error':'Too many slideshow connections.'},503);return
         try:
             self.close_connection = True
             self.send_response(200)
@@ -353,9 +333,9 @@ class Handler(BaseHTTPRequestHandler):
             version = changes.version
             # Every (re)connect starts with the current version so a client catches anything it missed.
             self.wfile.write(f'retry: 5000\nevent: photos\ndata: {{"version":{version}}}\n\n'.encode());self.wfile.flush()
-            deadline = time.monotonic() + self.app.wall_lifetime
+            deadline = time.monotonic() + self.app.event_lifetime
             while time.monotonic() < deadline:
-                latest = changes.wait(version, self.app.wall_heartbeat)
+                latest = changes.wait(version, self.app.event_heartbeat)
                 with self.app.sessions.lock:
                     if key not in self.app.sessions.records: return     # signed out elsewhere
                 if latest != version:
@@ -395,8 +375,7 @@ class Handler(BaseHTTPRequestHandler):
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
             with self.app.sessions.lock:
                 self.app.sessions.pending = {k:v for k,v in self.app.sessions.pending.items() if v[0]>time.time()}
-                # Only an allowlisted destination is remembered, so sign-in can never redirect off the app.
-                self.app.sessions.pending[state] = (time.time()+600, verifier, 'wall/' if query.get('next') == 'wall' else '')
+                self.app.sessions.pending[state] = (time.time()+600, verifier)
             url = self.app.ha_public+'/auth/authorize?'+urllib.parse.urlencode({
                 'client_id':self.app.public,'redirect_uri':self.app.public+'auth/callback',
                 'state':state,'code_challenge':challenge,'code_challenge_method':'S256'})
@@ -409,12 +388,13 @@ class Handler(BaseHTTPRequestHandler):
             tokens = self.app.sessions.token_request({'grant_type':'authorization_code',
                 'code':query.get('code',''),'code_verifier':pending[1]})
             sid = self.app.sessions.create(tokens)
-            self.redirect(self.app.public+(pending[2] if len(pending) > 2 else ''),self.set_cookie('hg_session',sid,30*86400));return
+            self.redirect(self.app.public,self.set_cookie('hg_session',sid,30*86400));return
         if path.startswith('/api/'):
             key, ha = self.identity()
             if path == '/api/session':
                 self.send_json({'config':self.app.config,'csrf':self.app.sessions.records[key]['csrf'],'cache_id':cache_id(key),
-                    'photos':self.app.photos is not None});return
+                    'photos':self.app.photos is not None,
+                    'slideshow':{'interval':self.app.slideshow_interval,'idle':self.app.slideshow_idle}});return
             if path == '/api/snapshot':
                 result = self.app.data.snapshot(ha,key,query.get('start'),query.get('end'),query.get('refresh')=='1')
                 known = json.loads(query.get('known','{}'))
@@ -427,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(ha.http('/api/calendars/'+entity+'?'+urllib.parse.urlencode({'start':start,'end':end})));return
             if path == '/api/photos':
                 self.send_json(self.photo_store().list());return
+            if path == '/api/photos/events':
+                self.photo_events(key, self.photo_store().changes);return
             match = re.fullmatch(r'/api/photos/([a-f0-9]{24})/(display|thumb)',path)
             if match:
                 body = self.photo_store().file(*match.groups())
@@ -438,21 +420,10 @@ class Handler(BaseHTTPRequestHandler):
                 body, content_type = ha.http(path,binary=True)
                 self.respond_headers(200,content_type,len(body));self.wfile.write(body);return
             self.send_error(404);return
-        if path == '/wall':
-            self.redirect(self.app.public+'wall/');return
-        if path == '/wall/events':
-            key, _ = self.identity()
-            self.wall_events(key, self.photo_store().changes);return
-        if path == '/wall/':
-            body = self.wall_page().encode()
-            self.respond_headers(200,'text/html; charset=utf-8',len(body));self.wfile.write(body);return
-        if path.startswith('/wall/'):
-            # Wall is a separate entry point outside the Sidekick service-worker shell.
-            asset = path[len('/wall/'):]
-            if asset not in {'wall.css','wall.js','slideshow.js','album.js','idle.js'}: self.send_error(404);return
-            body = (self.app.wall/asset).read_bytes()
-            self.respond_headers(200,mimetypes.guess_type(asset)[0] or 'application/octet-stream',len(body))
-            self.wfile.write(body);return
+        if path in ('/wall','/wall/'):
+            # The slideshow is part of the dashboard now. Kiosks bookmarked at /wall/ land there, keeping options
+            # such as ?idle= or ?debug=.
+            self.redirect(self.app.public+('?'+parsed.query if parsed.query else ''));return
         asset = 'index.html' if path == '/' else path.lstrip('/')
         if asset not in {'index.html','app.js','app.css','sw.js','manifest.webmanifest','icon.svg',
                         'icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'}:
@@ -541,17 +512,17 @@ def runtime(env, root):
     if not os.access(data_dir, os.W_OK): raise SystemExit(f'Hearthglance: data directory {data_dir} is not writable by uid {os.getuid()}')
     try: frame_ancestors(env.get('HG_FRAME_ANCESTORS',''))
     except ValueError as error: raise SystemExit(f'Hearthglance: {error}') from None
-    try: idle = int(env.get('HG_WALL_IDLE_MINUTES', '0'))
+    # HG_WALL_IDLE_MINUTES is the earlier name for the same setting; it stays accepted for existing staging configs.
+    try: idle = int(env.get('HG_SLIDESHOW_IDLE_MINUTES', env.get('HG_WALL_IDLE_MINUTES', '0')))
     except ValueError: idle = -1
-    if not 0 <= idle <= 240: raise SystemExit('Hearthglance: HG_WALL_IDLE_MINUTES must be 0 (off) to 240')
+    if not 0 <= idle <= 240: raise SystemExit('Hearthglance: HG_SLIDESHOW_IDLE_MINUTES must be 0 (off) to 240')
     photos = None
     if env.get('HG_MEDIA'):
         photos = Photos(env['HG_MEDIA'], data_dir/'photos.sqlite3', decoders=env.get('HG_PHOTO_DECODERS', 1))
         photos.recover_periodically()
     application = Application(config, env['HA_URL'], env['HA_PUBLIC_URL'], env['HG_PUBLIC_URL'], sessions,
-        Path(env.get('HG_STATIC', root/'static')), Path(env.get('HG_WALL', root/'wall')),
-        env.get('HG_FRAME_ANCESTORS',''), photos)
-    application.wall_idle = idle
+        Path(env.get('HG_STATIC', root/'static')), env.get('HG_FRAME_ANCESTORS',''), photos)
+    application.slideshow_idle = idle
     return application
 
 

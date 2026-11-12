@@ -29,7 +29,7 @@ Run this before any cutover. It gives the iPhones, Pi and Fire a real HTTPS targ
    ```nginx
    client_max_body_size 50m;
    proxy_request_buffering off;
-   location /hearthglance/wall/events {
+   location /hearthglance/api/photos/events {
        proxy_pass http://host.docker.internal:8136;
        proxy_buffering off;
        proxy_read_timeout 120s;
@@ -60,9 +60,9 @@ Run this before any cutover. It gives the iPhones, Pi and Fire a real HTTPS targ
    ```
 
    The install URL, PWA scope and manifest identity are unchanged, so installed iPhone apps update in place through their normal "Reload to update" prompt. Existing sign-ins keep working because `sessions.json` is read as-is (rehearsed in #9, S7).
-5. **Proxy for the live app path:** add `client_max_body_size 50m; proxy_request_buffering off;` to the existing `/hearthglance/` location so upload bodies stream straight to the external drive. Add a `location ^~ /hearthglance/wall/events` block with `proxy_buffering off`. The backend also sends `X-Accel-Buffering: no`.
-6. **Smoke test:** `/health`, the installed app on one iPhone, an HA dashboard with the webpage card, Wall on the Pi with `?debug=1`, and the Kobo, which stays on its existing endpoint.
-7. **Move the kiosks:** point the Pi and Fire at `<app>/wall/` and sign in once on each.
+5. **Proxy for the live app path:** add `client_max_body_size 50m; proxy_request_buffering off;` to the existing `/hearthglance/` location so upload bodies stream straight to the external drive. Add a `location ^~ /hearthglance/api/photos/events` block with `proxy_buffering off`. The backend also sends `X-Accel-Buffering: no`.
+6. **Smoke test:** `/health`, the installed app on one iPhone, an HA dashboard with the webpage card, the dashboard and slideshow on the Pi with `?debug=1`, and the Kobo, which stays on its existing endpoint.
+7. **Kiosks:** the Pi and Fire keep opening `<app>/` (add `?idle=<minutes>` per screen if `HG_SLIDESHOW_IDLE_MINUTES` isn't set). Sign in once on each if prompted.
 
 ## Rollback
 
