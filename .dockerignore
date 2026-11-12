@@ -13,4 +13,5 @@
 !apps/sidekick/static/manifest.webmanifest
 !apps/wall/static/
 !backend/web/app.py
+!backend/web/photos.py
 !backend/web/requirements.txt
