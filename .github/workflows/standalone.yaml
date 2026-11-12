@@ -91,7 +91,8 @@ jobs:
           check /hearthglance/wall/ 200
           check /hearthglance/wall/wall.js 200
           check /hearthglance/api/session 401
-          curl -sI http://127.0.0.1:8136/hearthglance/wall/ | grep -q "frame-ancestors 'self' https://ha.example.test;"
+          # The backend implements GET/POST only, so read headers from a real GET (HEAD returns 501).
+          curl -fsS -D - -o /dev/null http://127.0.0.1:8136/hearthglance/wall/ | grep -q "frame-ancestors 'self' https://ha.example.test;"
           docker exec hg sh -c 'touch /app/probe' && exit 1 || echo "root filesystem is read-only"
       - name: Startup fails clearly without mounts
         run: |

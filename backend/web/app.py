@@ -245,11 +245,16 @@ class Data:
 def frame_ancestors(value):
     """CSP frame-ancestors: same origin plus explicitly configured HTTPS origins only."""
     origins = []
+    label = r'(?!-)[a-z0-9-]{1,63}(?<!-)'
     for item in (value or '').split():
         parts = urllib.parse.urlsplit(item)
-        if parts.scheme != 'https' or not parts.hostname or parts.path not in ('','/') or parts.query or parts.fragment or parts.username:
-            raise ValueError('HG_FRAME_ANCESTORS accepts space-separated https:// origins only')
-        origins.append(f'https://{parts.netloc}')
+        try: port = parts.port
+        except ValueError: port = -1
+        host = parts.hostname or ''
+        if (parts.scheme != 'https' or port == -1 or parts.path not in ('','/') or parts.query or parts.fragment
+                or parts.username is not None or not re.fullmatch(rf'{label}(\.{label})*', host)):
+            raise ValueError('HG_FRAME_ANCESTORS accepts space-separated exact https:// origins only')
+        origins.append(f'https://{host}' + (f':{port}' if port not in (None, 443) else ''))
     return ' '.join(["'self'", *dict.fromkeys(origins)])
 
 

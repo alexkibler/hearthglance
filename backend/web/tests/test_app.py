@@ -141,8 +141,11 @@ class HTTPTests(unittest.TestCase):
 class FramingTests(unittest.TestCase):
     def test_frame_ancestors_accepts_only_explicit_https_origins(self):
         self.assertEqual(app.frame_ancestors(''),"'self'")
-        self.assertEqual(app.frame_ancestors('https://ha.example.test https://ha.example.test/'),"'self' https://ha.example.test")
-        for bad in ('http://ha.test','*','https://*.test/x','https://ha.test/path','https://u@ha.test',"'unsafe-inline'"):
+        self.assertEqual(app.frame_ancestors('https://ha.example.test https://HA.example.test/ https://ha.example.test:443'),"'self' https://ha.example.test")
+        self.assertEqual(app.frame_ancestors('https://ha.example.test:8443'),"'self' https://ha.example.test:8443")
+        for bad in ('http://ha.test','*','https://*','https://*.example.test','https://ha.example.test:*','https://ha.example.test:0x1',
+                    'https://ha.example.test:99999','https://*.test/x','https://ha.test/path','https://u@ha.test','https://:pw@ha.test',
+                    'https://ha.test?x','https://-bad.test','https://ha_test.test',"'unsafe-inline'"):
             with self.assertRaises(ValueError,msg=bad):app.frame_ancestors(bad)
     def test_configured_origin_reaches_every_response(self):
         with tempfile.TemporaryDirectory() as folder:
