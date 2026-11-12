@@ -1,0 +1,4 @@
+:root{color-scheme:dark;--bg:#0f1512;--fg:#e8efe9}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:clamp(16px,2.2vw,40px)/1.4 system-ui,sans-serif}
+main{display:grid;place-content:center;height:100%;text-align:center}
+h1{margin:0 0 .3em;font-weight:600}
