@@ -162,7 +162,8 @@ class RuntimeTests(unittest.TestCase):
     def test_valid_mounts_build_the_application(self):
         with tempfile.TemporaryDirectory() as folder:
             application=app.runtime(self.env(folder),Path(folder))
-            self.assertEqual(application.prefix,'/hearthglance');self.assertEqual(application.slideshow_idle,0)
+            self.assertEqual(application.prefix,'/hearthglance');self.assertEqual(application.slideshow_idle,5)
+            self.assertEqual(app.runtime(self.env(folder,HG_SLIDESHOW_IDLE_MINUTES='0'),Path(folder)).slideshow_idle,0)
             self.assertEqual(app.runtime(self.env(folder,HG_SLIDESHOW_IDLE_MINUTES='15'),Path(folder)).slideshow_idle,15)
             self.assertEqual(app.runtime(self.env(folder,HG_WALL_IDLE_MINUTES='7'),Path(folder)).slideshow_idle,7)   # earlier name
     def test_missing_or_unusable_mounts_fail_with_a_clear_message(self):

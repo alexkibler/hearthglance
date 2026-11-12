@@ -1,7 +1,7 @@
 // Family Photos slideshow, built into the dashboard. It plays full-screen over whatever page is open, and one
 // tap returns to exactly that view. Live album changes arrive over api/photos/events only while it plays.
 import {Slideshow} from './ui/slideshow.js';
-import {IdleTimer,idleMinutes,onIdle} from './ui/idle.js';
+import {IdleTimer,resolveIdle,onIdle} from './ui/idle.js';
 
 const clamp=(value,low,high,fallback)=>Number.isFinite(value)?Math.min(high,Math.max(low,value)):fallback;
 
@@ -39,12 +39,20 @@ export class SlideshowOverlay {
    interval:seconds*1000,...(this.timers?{timers:this.timers}:{}),
    empty:value=>{const el=this.root.querySelector('.slideshow-empty');if(el)el.hidden=!value;}});
  }
- attach({library,settings={},kiosk=()=>true}){
+ attach({library,settings={},kiosk=()=>true,device}){
   this.detach();
-  this.library=library;this.kiosk=kiosk;
+  this.library=library;this.kiosk=kiosk;this.settings=settings;
   this.slideshow=this.player(settings.interval);
-  this.idle=new IdleTimer({minutes:idleMinutes(this.search,settings.idle||0),onIdle:()=>this.idleFired(),...(this.timers?{timers:this.timers}:{})});
+  this.idleSetting=resolveIdle({search:this.search,device,server:settings.idle??5});
+  this.idle=new IdleTimer({minutes:this.idleSetting.minutes,onIdle:()=>this.idleFired(),...(this.timers?{timers:this.timers}:{})});
   this.unsubscribe=library.subscribe(()=>{if(this.playing)this.slideshow.update(library.photos);});
+ }
+ // Settings changed this device's idle time. An ?idle= in the address still takes priority.
+ setDeviceIdle(device){
+  this.idleSetting=resolveIdle({search:this.search,device,server:this.settings?.idle??5});
+  this.idle.setMinutes(this.idleSetting.minutes);
+  if(!this.playing&&this.library)this.idle.poke();else this.idle.stop();
+  if(this.playing)this.idle.stop();
  }
  detach(){this.stop();this.idle.stop();this.unsubscribe?.();this.unsubscribe=null;this.library=null;}
  get playing(){return !this.root.hidden;}

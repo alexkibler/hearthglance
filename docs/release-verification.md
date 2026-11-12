@@ -40,7 +40,7 @@ Use the staging URL for every row. Leave production untouched until all rows pas
 | W2 | Person | Pi | While it plays, add a photo from an iPhone (can be combined with D2) | The new photo joins the rotation with no reload |
 | W3 | Person | Pi | Remove the photo currently on screen from an iPhone (can be combined with D4) | It leaves within a second or two |
 | W4 | Operator | Pi | Restart the staging container while the Pi plays; the person just watches | The last slide stays up, "Reconnecting…" shows briefly, and playback resumes |
-| W6 | Operator + Person | Pi | With `?idle=1` on the URL, leave the dashboard untouched for a minute, then tap | The slideshow starts by itself over the dashboard; the tap returns to the same page |
+| W6 | Person | Pi | Settings → **Slideshow** → **Start slideshow after: 1 minute**, close Settings, leave any dashboard page untouched for a minute, then tap | The slideshow starts by itself over that page, and the tap returns to it. Set it back to 5 minutes (the default) afterwards |
 | W5 | Operator | Pi | Memory sampling, see §3 | Growth levels off |
 | F1 | Person | Fire (Cromite) | Open `<staging>/hearthglance/?debug=1` and read out (or photograph) the overlay | CSS px and devicePixelRatio recorded in #9 |
 | F2 | Person | Fire | Tap **Slideshow** in the left menu with a finger, then tap the slideshow to return | Both respond on the first tap; the dashboard and slides fit the recorded viewport |

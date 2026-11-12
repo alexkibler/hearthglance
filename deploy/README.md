@@ -32,7 +32,7 @@ Startup exits with a one-line error when `config.json` is missing or unreadable,
 | `HG_FRAME_ANCESTORS` | empty | Extra `https://` origins allowed to frame the app. Same origin is always allowed. |
 | `HG_MEDIA` | `/media` | Photo media root. Unset it to disable photos. |
 | `HG_PHOTO_DECODERS` | `1` | Concurrent photo decode workers |
-| `HG_SLIDESHOW_IDLE_MINUTES` | `0` | Minutes of inactivity before a wall-sized screen starts the slideshow; `0` is off. The earlier name `HG_WALL_IDLE_MINUTES` is still accepted |
+| `HG_SLIDESHOW_IDLE_MINUTES` | `5` | Default minutes of inactivity before a wall-sized screen starts the slideshow; `0` is off. Each device can change it in Settings. The earlier name `HG_WALL_IDLE_MINUTES` is still accepted |
 
 ### Compatibility with the pre-monorepo layout
 
@@ -104,7 +104,7 @@ When Home Assistant proxies the app on its own origin, the default `frame-ancest
 The Pi and Fire open the same dashboard as the phones, at `<base>/`, and sign in once. The slideshow is part of it:
 
 - **Start:** the **Slideshow** entry in the left menu, or **Play slideshow** on the Photos page. It plays over whatever page is open, and one tap returns to exactly that view.
-- **Idle start:** off by default. Set `HG_SLIDESHOW_IDLE_MINUTES` (1–240) to start it after that many quiet minutes on wall-sized screens. Override a single screen with `?idle=<minutes>` (`?idle=0` turns it off there). Phones never start it on their own, and an empty album keeps the dashboard up.
+- **Idle start:** after 5 quiet minutes by default, from any page of the dashboard, on wall-sized screens. Each device can choose its own time, or Off, under Settings → **Slideshow** → **Start slideshow after**. `HG_SLIDESHOW_IDLE_MINUTES` (0–240) changes the server default, and `?idle=<minutes>` in a screen's address overrides everything (`?idle=0` turns it off there). Phones never start it on their own, and an empty album keeps the dashboard up.
 - **Per-screen options:** `?interval=<seconds>` (3–300, default 12) sets the slide interval, `?slideshow=1` starts playing as soon as the dashboard loads, and `?debug=1` shows the viewport, pixel ratio and stream state.
 - **Old address:** `<base>/wall/` redirects to the dashboard and keeps these options.
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {IdleTimer,idleMinutes,onIdle,onAlbum} from '../ui/idle.js';
+import {IdleTimer,idleMinutes,onIdle,onAlbum,resolveIdle} from '../ui/idle.js';
 
 function timers(){const set=new Map();let n=0;return {set,api:{set:(f,ms)=>{set.set(++n,{f,ms});return n;},clear:id=>set.delete(id)},
  fire(){const [[id,t]]=set;set.delete(id);t.f();}};}
@@ -37,4 +37,14 @@ test('an empty album keeps the dashboard up, and the first photo arms the countd
  assert.equal(onAlbum({playing:false,photos:[],timer}),'none');
  assert.equal(onAlbum({playing:true,photos:[{id:'a'}],timer:new IdleTimer({minutes:5,onIdle(){},timers:t.api})}),'none');
  assert.equal(onAlbum({playing:false,photos:[{id:'a'}],timer:new IdleTimer({minutes:0,onIdle(){},timers:t.api})}),'none');
+});
+
+test('idle time comes from the address, then this device, then the server default',()=>{
+ assert.deepEqual(resolveIdle({}),{minutes:5,source:'server'});
+ assert.deepEqual(resolveIdle({server:0}),{minutes:0,source:'server'});
+ assert.deepEqual(resolveIdle({device:10,server:5}),{minutes:10,source:'device'});
+ assert.deepEqual(resolveIdle({device:0,server:5}),{minutes:0,source:'device'});
+ assert.deepEqual(resolveIdle({search:'?idle=3',device:10,server:5}),{minutes:3,source:'address'});
+ assert.deepEqual(resolveIdle({device:'nonsense',server:5}),{minutes:5,source:'server'});
+ assert.deepEqual(resolveIdle({device:999}),{minutes:240,source:'device'});
 });

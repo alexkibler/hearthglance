@@ -10,6 +10,19 @@ export class IdleTimer {
  }
  stop(){this.timers.clear(this.timer);this.timer=null;}
  get armed(){return this.timer!==null;}
+ setMinutes(minutes){this.ms=Math.max(0,Number(minutes)||0)*60000;}
+}
+
+export const IDLE_CHOICES=[0,1,2,5,10,15,30,60];
+
+// Which idle time applies on this screen: an ?idle= in the address wins, then this device's setting, then the
+// server default (HG_SLIDESHOW_IDLE_MINUTES, 5 unless configured).
+export function resolveIdle({search='',device,server=5}){
+ const query=new URLSearchParams(search).get('idle');
+ if(query!==null&&query!=='')return {minutes:idleMinutes(search,server),source:'address'};
+ const value=Number(device);
+ if(device!==undefined&&device!==null&&device!==''&&Number.isFinite(value)&&value>=0)return {minutes:Math.min(240,Math.floor(value)),source:'device'};
+ return {minutes:idleMinutes('',server),source:'server'};
 }
 
 // Idle playback only makes sense with something to show: an empty album keeps the dashboard up, and the

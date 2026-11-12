@@ -6,7 +6,7 @@ import {SlideshowOverlay} from '../slideshow-overlay.js';
 const tick=async()=>{for(let i=0;i<10;i++)await Promise.resolve();};
 const photo=id=>({id,display:`./api/photos/${id}/display`});
 
-function rig({search='',photos=['a','b'],settings={idle:5},kiosk=true}={}){
+function rig({search='',photos=['a','b'],settings={idle:5},kiosk=true,device}={}){
  const {document}=parseHTML('<html><body><section id="slideshow" hidden><img class="slide"><img class="slide"><p class="slideshow-empty" hidden></p></section></body></html>');
  const timers=new Map();let n=0;
  const api={set:(f,ms)=>{timers.set(++n,{f,ms});return n;},clear:id=>timers.delete(id)};
@@ -24,7 +24,7 @@ function rig({search='',photos=['a','b'],settings={idle:5},kiosk=true}={}){
   set(ids,version){this.photos=ids.map(photo);this.version=version;for(const f of this.listeners)f(this);}};
  const overlay=new SlideshowOverlay({root:document.querySelector('#slideshow'),search,base:'https://app.test/hearthglance/',
   EventSourceImpl:FakeEventSource,timers:api,layers,doc:document});
- overlay.attach({library,settings,kiosk:()=>kiosk});
+ overlay.attach({library,settings,kiosk:()=>kiosk,device});
  const fireIdle=async()=>{const entry=[...timers].find(([,t])=>t.ms===(settings.idle||0)*60000);assert.ok(entry,'idle timer armed');timers.delete(entry[0]);await entry[1].f();await tick();};
  return {overlay,document,library,streams,timers,shown,fireIdle,root:document.querySelector('#slideshow')};
 }
@@ -75,8 +75,10 @@ test('idle starts on wall-sized screens with photos, never on phones, empty albu
  assert.equal(r.root.hidden,true);
 });
 
-test('idle is off by default, a kiosk can override it, and ?slideshow=1 starts playback',async()=>{
+test('idle defaults to 5 minutes, the server can turn it off, a kiosk can override it, and ?slideshow=1 plays',async()=>{
  let r=rig({settings:{}});r.overlay.ready();
+ assert.ok([...r.timers.values()].some(t=>t.ms===300000));
+ r=rig({settings:{idle:0}});r.overlay.ready();
  assert.equal(r.timers.size,0);
  r=rig({settings:{},search:'?idle=2'});r.overlay.ready();
  assert.ok([...r.timers.values()].some(t=>t.ms===120000));
@@ -93,4 +95,15 @@ test('signing out detaches the library and stops playback; a new sign-in attache
  r.overlay.attach({library:next,settings:{idle:5}});
  r.overlay.start();await tick();
  assert.equal(r.shown.at(-1),'./api/photos/z/display');assert.equal(next.listeners.size,1);
+});
+
+test('the device setting picks the idle time, changes apply at once, and an ?idle= address still wins',()=>{
+ const armed=r=>[...r.timers.values()].map(t=>t.ms).filter(ms=>ms>=60000);
+ let r=rig({settings:{idle:5},device:15});r.overlay.ready();
+ assert.deepEqual(armed(r),[900000]);assert.equal(r.overlay.idleSetting.source,'device');
+ r.overlay.setDeviceIdle(2);assert.deepEqual(armed(r),[120000]);
+ r.overlay.setDeviceIdle(0);assert.deepEqual(armed(r),[]);                    // Off on this device
+ r=rig({settings:{idle:5},device:15,search:'?idle=1'});r.overlay.ready();
+ assert.deepEqual(armed(r),[60000]);assert.equal(r.overlay.idleSetting.source,'address');
+ r.overlay.setDeviceIdle(30);assert.deepEqual(armed(r),[60000]);
 });
