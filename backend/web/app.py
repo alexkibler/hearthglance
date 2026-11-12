@@ -20,6 +20,8 @@ import urllib.request
 
 import websocket
 
+from photos import PhotoError, Photos
+
 
 class LoginRequired(Exception):
     pass
@@ -259,7 +261,7 @@ def frame_ancestors(value):
 
 
 class Application:
-    def __init__(self, config, ha_url, ha_public, public_url, state, static, wall=None, framing=''):
+    def __init__(self, config, ha_url, ha_public, public_url, state, static, wall=None, framing='', photos=None):
         self.config, self.ha_url, self.ha_public = config, ha_url.rstrip('/'), ha_public.rstrip('/')
         self.public = public_url.rstrip('/')+'/'
         self.origin = urllib.parse.urlsplit(self.public)._replace(path='',query='',fragment='').geturl().rstrip('/')
@@ -267,6 +269,7 @@ class Application:
         self.sessions = Sessions(state, self.ha_url, self.public)
         self.data, self.static = Data(config), Path(static)
         self.wall = Path(wall) if wall else Path(static).parent/'wall'
+        self.photos = photos
         self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
@@ -279,11 +282,11 @@ class Handler(BaseHTTPRequestHandler):
     @property
     def app(self): return self.server.app
 
-    def respond_headers(self, code, content_type, size, extra=None):
+    def respond_headers(self, code, content_type, size, extra=None, cache='no-store'):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length',str(size))
-        self.send_header('Cache-Control','no-store')
+        self.send_header('Cache-Control',cache)
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
         self.send_header('Content-Security-Policy',self.app.csp)
@@ -307,8 +310,16 @@ class Handler(BaseHTTPRequestHandler):
         key = self.app.sessions.key(self.cookie('hg_session'))
         return key, HomeAssistant(self.app.ha_url, lambda:self.app.sessions.access(key))
 
+    def photo_store(self):
+        if not self.app.photos: raise PhotoError(503, 'Photos are not configured on this server.')
+        return self.app.photos
+
+    def send_photo_error(self, error):
+        self.send_json({'error':error.message},error.status)
+
     def do_GET(self):
         try: self.get()
+        except PhotoError as error: self.send_photo_error(error)
         except LoginRequired: self.send_json({'error':'Sign in to Hearthglance.'},401)
         except ValueError: self.send_json({'error':'Invalid request.'},400)
         except Exception: self.send_json({'error':'Could not reach Home Assistant. Saved data is still available.'},503)
@@ -355,6 +366,14 @@ class Handler(BaseHTTPRequestHandler):
                 if entity not in self.app.data.calendars: raise ValueError('Unknown calendar')
                 start, end = self.app.data.dates(query.get('start'),query.get('end'))
                 self.send_json(ha.http('/api/calendars/'+entity+'?'+urllib.parse.urlencode({'start':start,'end':end})));return
+            if path == '/api/photos':
+                self.send_json(self.photo_store().list());return
+            match = re.fullmatch(r'/api/photos/([a-f0-9]{24})/(display|thumb)',path)
+            if match:
+                body = self.photo_store().file(*match.groups())
+                # Private to the signed-in browser; a photo id never changes content.
+                self.respond_headers(200,'image/jpeg',len(body),cache='private, max-age=31536000, immutable')
+                self.wfile.write(body);return
             match = re.fullmatch(r'/api/hearthglance_recipes/image/([a-f0-9]{64})/(photo|thumb)',path)
             if match:
                 body, content_type = ha.http(path,binary=True)
@@ -378,21 +397,36 @@ class Handler(BaseHTTPRequestHandler):
         self.respond_headers(200,mimetypes.guess_type(file.name)[0] or 'application/octet-stream',len(body))
         self.wfile.write(body)
 
+    def write_guard(self):
+        """Session, origin and CSRF checks shared by every write. Returns (key, ha) or None after replying."""
+        key, ha = self.identity()
+        origin = self.headers.get('Origin')
+        if origin and origin != self.app.origin: raise ValueError('Unexpected origin')
+        csrf = self.headers.get('X-HG-CSRF','')
+        if not hmac.compare_digest(csrf,self.app.sessions.records[key]['csrf']):
+            self.send_json({'error':'Reload the app before saving.'},403);return None
+        if self.headers.get('Sec-Fetch-Site') == 'cross-site':
+            self.send_json({'error':'Unexpected request origin.'},403);return None
+        return key, ha
+
+    def length(self):
+        if self.headers.get('Transfer-Encoding'): raise ValueError('Chunked uploads are not supported')
+        return int(self.headers.get('Content-Length','0'))
+
     def do_POST(self):
         try:
-            key, ha = self.identity()
-            origin = self.headers.get('Origin')
-            if origin and origin != self.app.origin: raise ValueError('Unexpected origin')
-            csrf = self.headers.get('X-HG-CSRF','')
-            if not hmac.compare_digest(csrf,self.app.sessions.records[key]['csrf']):
-                self.send_json({'error':'Reload the app before saving.'},403);return
-            if self.headers.get('Sec-Fetch-Site') == 'cross-site':
-                self.send_json({'error':'Unexpected request origin.'},403);return
-            size = int(self.headers.get('Content-Length','0'))
+            guarded = self.write_guard()
+            if not guarded: return
+            key, ha = guarded
+            path = urllib.parse.urlsplit(self.path).path
+            if path == self.app.prefix+'/api/photos':
+                # Raw image body is streamed to staging on the media mount, never buffered in memory.
+                photo, created = self.photo_store().upload(self.rfile, self.length(), self.headers.get('Idempotency-Key',''))
+                self.send_json({'photo':photo},201 if created else 200);return
+            size = self.length()
             if not 0 < size <= 128*1024: raise ValueError('Invalid request size')
             body = json.loads(self.rfile.read(size))
             if not isinstance(body,dict): raise ValueError('Invalid request')
-            path = urllib.parse.urlsplit(self.path).path
             if path == self.app.prefix+'/api/logout':
                 self.app.sessions.remove(key);self.app.data.invalidate(key)
                 self.respond_headers(200,'application/json',2,{'Set-Cookie':self.set_cookie('hg_session','',0)})
@@ -402,9 +436,22 @@ class Handler(BaseHTTPRequestHandler):
             else: self.send_error(404);return
             self.app.data.invalidate(key)
             self.send_json(result)
+        except PhotoError as error: self.close_connection = True; self.send_photo_error(error)
+        except LoginRequired: self.close_connection = True; self.send_json({'error':'Sign in before saving.'},401)
+        except (ValueError, TypeError, KeyError): self.close_connection = True; self.send_json({'error':'Invalid or unsupported action.'},400)
+        except Exception: self.close_connection = True; self.send_json({'error':'Could not confirm the save. Refresh before trying again.'},503)
+
+    def do_DELETE(self):
+        try:
+            if not self.write_guard(): return
+            match = re.fullmatch(re.escape(self.app.prefix)+r'/api/photos/([a-f0-9]{24})', urllib.parse.urlsplit(self.path).path)
+            if not match: self.send_error(404);return
+            self.photo_store().remove(match.group(1))
+            self.send_json({'removed':match.group(1)})
+        except PhotoError as error: self.send_photo_error(error)
         except LoginRequired: self.send_json({'error':'Sign in before saving.'},401)
         except (ValueError, TypeError, KeyError): self.send_json({'error':'Invalid or unsupported action.'},400)
-        except Exception: self.send_json({'error':'Could not confirm the save. Refresh before trying again.'},503)
+        except Exception: self.send_json({'error':'Could not confirm the removal. Refresh before trying again.'},503)
 
     def log_message(self, *args): pass  # Never log cookies, auth codes, queries, or family data.
 
@@ -429,9 +476,13 @@ def runtime(env, root):
     if not os.access(data_dir, os.W_OK): raise SystemExit(f'Hearthglance: data directory {data_dir} is not writable by uid {os.getuid()}')
     try: frame_ancestors(env.get('HG_FRAME_ANCESTORS',''))
     except ValueError as error: raise SystemExit(f'Hearthglance: {error}') from None
+    photos = None
+    if env.get('HG_MEDIA'):
+        photos = Photos(env['HG_MEDIA'], data_dir/'photos.sqlite3', decoders=env.get('HG_PHOTO_DECODERS', 1))
+        photos.recover_periodically()
     return Application(config, env['HA_URL'], env['HA_PUBLIC_URL'], env['HG_PUBLIC_URL'], sessions,
         Path(env.get('HG_STATIC', root/'static')), Path(env.get('HG_WALL', root/'wall')),
-        env.get('HG_FRAME_ANCESTORS',''))
+        env.get('HG_FRAME_ANCESTORS',''), photos)
 
 
 if __name__ == '__main__':

@@ -13,10 +13,12 @@ services:
       HA_PUBLIC_URL: ${HA_PUBLIC_URL:-https://ha.invalid}
       HG_PUBLIC_URL: ${HG_PUBLIC_URL:-http://127.0.0.1:8136/hearthglance/}
       HG_FRAME_ANCESTORS: ${HG_FRAME_ANCESTORS:-}
+      HG_PHOTO_DECODERS: ${HG_PHOTO_DECODERS:-1}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 128m
+    # Server ~50 MB plus one decode worker; a 48 MP HEIC needs the most (see deploy/README.md).
+    mem_limit: ${HG_MEM_LIMIT:-768m}
     tmpfs:
       - /tmp:size=16m
     volumes:

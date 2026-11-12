@@ -14,7 +14,7 @@ Pin deployments to a tested image tag or digest so rollback is a one-line change
 |---|---|---|
 | `/config` | read-only | `config.json`: nonsecret household settings and HA mappings |
 | `/data` | writable | Sessions now, SQLite and migration metadata later |
-| `/media` | writable | Photo staging, display images and thumbnails (from #6) |
+| `/media` | writable | Photo staging, display images and thumbnails |
 
 The container runs as uid/gid `10001` by default. Set `user:` to match the host owner of `/data` and `/media` instead when needed. Provision both directories before startup. Compose binds use `create_host_path: false`, so a missing drive fails at startup and never falls back to an empty folder on the internal disk.
 
@@ -30,6 +30,8 @@ Startup exits with a one-line error when `config.json` is missing or unreadable,
 | `HG_CONFIG` | `/config/config.json` | Household config file |
 | `HG_SESSIONS` | `/data/sessions.json` | Session store; its directory is the data directory |
 | `HG_FRAME_ANCESTORS` | empty | Extra `https://` origins allowed to frame the app. Same origin is always allowed. |
+| `HG_MEDIA` | `/media` | Photo media root. Unset it to disable photos. |
+| `HG_PHOTO_DECODERS` | `1` | Concurrent photo decode workers |
 
 ### Compatibility with the pre-monorepo layout
 
@@ -42,6 +44,40 @@ environment:
 ```
 
 Existing sessions, the install URL, PWA scope and manifest identity are unchanged, so installed iPhone apps keep working.
+
+## Photo media
+
+Provision the media directory once, on the external drive, before starting the container:
+
+```sh
+mkdir -p "$HG_MEDIA_DIR"
+printf 'hearthglance-media v1\n' > "$HG_MEDIA_DIR/.hearthglance-media"
+```
+
+The backend checks for `.hearthglance-media` on every photo read and write and never creates it. When the drive is missing or the marker is gone, photo requests return `503`, and calendars, lists and the rest of the app keep working. Staging, derivatives and the marker all live on the same filesystem, so publishing is an atomic rename.
+
+The SQLite catalog (`/data/photos.sqlite3`) and the media files are on different mounts. Back them up together. Startup and a 10-minute background pass delete unreferenced photo folders and abandoned staging files, but never a folder with a catalog row.
+
+### Memory
+
+Each photo is decoded in a short-lived worker process with a 1 GB address-space cap, so the server process stays near 25 MB. Measured container peaks with one decoder, at default settings:
+
+| Input | Container peak |
+|---|---|
+| 48 MP JPEG | ~145 MB (JPEG decodes at reduced scale) |
+| 24 MP HEIC (iPhone Pro default) | ~300 MB |
+| 48 MP HEIC | ~530 MB |
+
+Give the container at least `768m` with `HG_PHOTO_DECODERS=1`, and add about 550 MB per extra decoder. The pre-monorepo deployment's `128m` limit is too small for photos.
+
+### Reverse proxy
+
+Upload bodies must reach the backend's staging area on the external drive, not a proxy spool on the internal disk. For the app location, use:
+
+```nginx
+client_max_body_size 50m;
+proxy_request_buffering off;
+```
 
 ## Home Assistant embed
 
