@@ -273,8 +273,8 @@ class Application:
         self.event_streams = threading.BoundedSemaphore(8)
         self.event_heartbeat, self.event_lifetime = 25, 900
         # Slideshow settings sent to the dashboard: seconds per photo, and minutes of inactivity before a
-        # wall-sized screen starts it on its own (0 is off).
-        self.slideshow_interval, self.slideshow_idle = 12, 0
+        # wall-sized screen starts it on its own (0 is off). Each device can change it in Settings.
+        self.slideshow_interval, self.slideshow_idle = 12, 5
         self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
@@ -513,7 +513,7 @@ def runtime(env, root):
     try: frame_ancestors(env.get('HG_FRAME_ANCESTORS',''))
     except ValueError as error: raise SystemExit(f'Hearthglance: {error}') from None
     # HG_WALL_IDLE_MINUTES is the earlier name for the same setting; it stays accepted for existing staging configs.
-    try: idle = int(env.get('HG_SLIDESHOW_IDLE_MINUTES', env.get('HG_WALL_IDLE_MINUTES', '0')))
+    try: idle = int(env.get('HG_SLIDESHOW_IDLE_MINUTES', env.get('HG_WALL_IDLE_MINUTES', '5')))
     except ValueError: idle = -1
     if not 0 <= idle <= 240: raise SystemExit('Hearthglance: HG_SLIDESHOW_IDLE_MINUTES must be 0 (off) to 240')
     photos = None

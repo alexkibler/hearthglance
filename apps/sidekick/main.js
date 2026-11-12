@@ -4,6 +4,7 @@ import {PWA} from './pwa.js';
 import {OfflineStore} from './offline-store.js';
 import {PhotoLibrary} from './ui/photos.js';
 import {SlideshowOverlay} from './slideshow-overlay.js';
+import {IDLE_CHOICES} from './ui/idle.js';
 
 const root=document.querySelector('#app'),login=document.querySelector('#login'),status=document.querySelector('#status');
 const offline=new OfflineStore();
@@ -51,7 +52,7 @@ function mount(config,snapshot,online=true) {
     card._pages=[...card._pages.filter(p=>p!=='settings'),'photos','settings'];
     card._photoLibrary=new PhotoLibrary({csrf:session.csrf,unauthorized:()=>{if(active())forgetOffline().then(showLogin);}});
     // Idle start only on wall-sized layouts; phones open the slideshow from Photos.
-    slideshow.attach({library:card._photoLibrary,settings:session.slideshow||{},kiosk:()=>!card._mobile});
+    slideshow.attach({library:card._photoLibrary,settings:session.slideshow||{},kiosk:()=>!card._mobile,device:card._prefs.slideshowIdle});
   }else slideshow.detach();
   const page=new URLSearchParams(location.search).get('page');
   if(card._pages.includes(page))card._page=page;
@@ -91,6 +92,13 @@ function mount(config,snapshot,online=true) {
   const originalSettings=card._settings;
   card._settings=function(){originalSettings.call(this);const panel=this.shadowRoot.querySelector('.settings-options');
     panel.querySelector('a[href="/config"]')?.remove();
+    if(this._photoLibrary)panel.insertAdjacentHTML('beforeend',slideshowSettings());
+    panel.querySelector('[data-slideshow-idle]')?.addEventListener('change',event=>{
+      event.stopPropagation();                      // handled here, not by the card's form handlers
+      this._prefs.slideshowIdle=Number(event.target.value);this._savePrefs();
+      slideshow.setDeviceIdle(this._prefs.slideshowIdle);
+      const note=panel.querySelector('[data-slideshow-note]');if(note)note.textContent=slideshowNote();
+    });
     panel.insertAdjacentHTML('beforeend','<div data-pwa-controls></div><p class="section-note">Hearthglance runs independently. Home Assistant supplies your data.</p><button class="btn" data-action="sign-out">Sign out</button>');syncPwaControls();
   };
   const originalRender=card._renderMain;
@@ -132,6 +140,18 @@ function syncPwaControls(){
  notice.hidden=!pwa.waiting||pwa.registration.waiting===dismissedWorker;
  const controls=card?.shadowRoot.querySelector('[data-pwa-controls]');
  if(controls&&!savingPreviews)controls.innerHTML=`<h3>App &amp; offline access</h3>${pwa.isInstalled?'<p class="section-note">Installed on this device.</p>':`<button class="btn" data-action="pwa-install">${pwa.label()}</button>`}<p class="section-note">${offlineSaved?'Your dashboard is saved on this device.':'Your dashboard will be saved after it loads online.'} ${pwa.offlineReady?'Offline app ready.':'Preparing offline app…'}</p><button class="btn" data-action="pwa-save-previews">Save recipe previews for offline</button><p class="section-note" data-offline-progress role="status"></p><button class="btn" data-action="pwa-update">${pwa.waiting?'Reload to update':'Check for app updates'}</button>`;
+}
+// Settings: how long a wall-sized screen waits without a touch before starting the slideshow. Stored per device.
+function slideshowSettings(){
+ const current=slideshow.idleSetting?.source==='address'?(card._prefs.slideshowIdle??slideshow.settings?.idle??5):slideshow.idleSetting?.minutes??5;
+ const choices=[...new Set([...IDLE_CHOICES,current])].sort((a,b)=>a-b);
+ const label=m=>m===0?'Off':m===1?'1 minute':m+' minutes';
+ return `<div class="slideshow-settings"><h3>Slideshow</h3><label class="settings-row">Start slideshow after<select data-slideshow-idle aria-label="Start slideshow after">${choices.map(m=>`<option value="${m}" ${m===current?'selected':''}>${label(m)}</option>`).join('')}</select></label><p class="section-note" data-slideshow-note>${slideshowNote()}</p></div>`;
+}
+function slideshowNote(){
+ const s=slideshow.idleSetting;
+ if(s?.source==='address')return `This screen's address sets ?idle=${s.minutes}, which takes priority over this setting.`;
+ return 'On wall-sized screens, after this long without a touch. Phones never start it on their own. Applies to this device.';
 }
 async function install(){
  if(await pwa.install())return;
