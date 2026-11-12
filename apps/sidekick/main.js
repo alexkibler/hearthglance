@@ -24,8 +24,12 @@ async function request(path,options={}) {
 function freshness(connected,snapshot) {
   status.hidden=false;
   const updated=new Date(snapshot.updated).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  status.textContent=(connected?'Updated ':'Offline · Saved ')+updated+(snapshot.errors.length?' · Some sources unavailable':'')+(offlineSaveFailed?' · Offline save unavailable':'');
+  const text=(connected?'Updated ':'Offline · Saved ')+updated+(snapshot.errors.length?' · Some sources unavailable':'')+(offlineSaveFailed?' · Offline save unavailable':'');
+  status.textContent=text;
   status.classList.toggle('offline',!connected);
+  card._freshness={text,offline:!connected};
+  const phoneStatus=card.shadowRoot.querySelector('.phone-freshness');
+  if(phoneStatus){phoneStatus.textContent=text;phoneStatus.classList.toggle('offline',!connected);}
 }
 function setHass(){
   card.hass={connected:bridge.connected,states:bridge.states,connection:bridge.connection,
