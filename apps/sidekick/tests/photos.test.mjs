@@ -127,3 +127,48 @@ test('idempotency keys satisfy the server pattern with or without randomUUID',()
  assert.match(uploadKey(globalThis.crypto),pattern);
  assert.match(uploadKey({getRandomValues:bytes=>bytes.fill(171)}),pattern);
 });
+
+function held(){
+ const queue=[];
+ const fetch=(url,init={})=>new Promise(resolve=>queue.push({url,init,resolve}));
+ return {queue,fetch};
+}
+
+test('a slow list response never erases an upload that finished while it was in flight',async()=>{
+ const h=held();
+ const {lib,sends}=library({fetch:h.fetch});
+ const loading=lib.load();
+ lib.add([file()]);sends[0].resolve({status:201,body:{photo:photo('d'.repeat(24))}});await tick();
+ assert.deepEqual(lib.photos.map(p=>p.id),['d'.repeat(24)]);
+ h.queue.shift().resolve(json(200,{photos:[],version:0}));await tick();     // stale: listed before the upload
+ assert.deepEqual(lib.photos.map(p=>p.id),['d'.repeat(24)]);
+ assert.equal(h.queue.length,1);                                              // re-listed instead
+ h.queue.shift().resolve(json(200,{photos:[photo('d'.repeat(24))],version:1}));await loading;
+ assert.deepEqual(lib.photos.map(p=>p.id),['d'.repeat(24)]);assert.equal(lib.version,1);
+});
+
+test('a slow list response never restores a photo removed while it was in flight',async()=>{
+ const h=held();
+ const {lib}=library({fetch:h.fetch});
+ lib.photos=[photo('a'.repeat(24)),photo('b'.repeat(24))];lib.status='ready';
+ const loading=lib.load();
+ const removing=lib.remove('a'.repeat(24));
+ h.queue[1].resolve(json(200,{removed:'a'.repeat(24)}));await removing;
+ h.queue[0].resolve(json(200,{photos:[photo('a'.repeat(24)),photo('b'.repeat(24))],version:4}));await tick();
+ assert.deepEqual(lib.photos.map(p=>p.id),['b'.repeat(24)]);
+ h.queue[2].resolve(json(200,{photos:[photo('b'.repeat(24))],version:5}));await loading;
+ assert.deepEqual(lib.photos.map(p=>p.id),['b'.repeat(24)]);
+});
+
+test('only the newest list request applies when responses arrive out of order',async()=>{
+ const h=held();
+ const {lib}=library({fetch:h.fetch});
+ const first=lib.load(),second=lib.load();
+ h.queue[1].resolve(json(200,{photos:[photo('n'.repeat(24))],version:9}));await second;
+ h.queue[0].resolve(json(200,{photos:[],version:8}));await first;
+ assert.deepEqual(lib.photos.map(p=>p.id),['n'.repeat(24)]);assert.equal(lib.version,9);
+ h.queue.length=0;
+ const third=lib.load();h.queue[0].resolve(Promise.reject(new TypeError('Failed to fetch')));
+ const fourth=lib.load();h.queue[1].resolve(json(200,{photos:[],version:10}));await Promise.all([third,fourth]);
+ assert.equal(lib.status,'ready');                                            // an older failure is ignored too
+});

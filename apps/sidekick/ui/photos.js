@@ -30,6 +30,7 @@ export class PhotoLibrary {
   Object.assign(this,{csrf,base,transport,fetch,online,unauthorized,concurrency,key});
   this.photos=[];this.uploads=[];this.status='idle';this.error='';this.version=null;
   this.listeners=new Set();this.active=0;this.sequence=0;this.removing=new Set();
+  this.requests=0;this.mutations=0;
  }
  subscribe(listener){this.listeners.add(listener);return ()=>this.listeners.delete(listener);}
  emit(){for(const listener of this.listeners)listener(this);}
@@ -37,13 +38,17 @@ export class PhotoLibrary {
  async load(){
   if(!this.online()){this.status='offline';this.emit();return;}
   if(this.status!=='ready')this.status='loading';this.emit();
+  // A list response only applies if it is still the newest request and no upload or removal landed meanwhile.
+  const request=++this.requests,mutations=this.mutations;
   try{
    const response=await this.fetch(this.url('api/photos'),{credentials:'same-origin'});
    const body=await response.json().catch(()=>({}));
+   if(request!==this.requests)return;
+   if(mutations!==this.mutations)return this.load();
    if(response.status===401){this.unauthorized();return;}
    if(!response.ok)throw new Error(body.error||'Photos are unavailable right now.');
    this.photos=body.photos;this.version=body.version;this.album=body.album;this.status='ready';this.error='';
-  }catch(error){this.status='error';this.error=error.message==='Failed to fetch'?'Connect to see photos.':error.message;}
+  }catch(error){if(request!==this.requests)return;this.status='error';this.error=error.message==='Failed to fetch'?'Connect to see photos.':error.message;}
   this.emit();
  }
  add(files){
@@ -75,7 +80,7 @@ export class PhotoLibrary {
    upload.progress=fraction;if(fraction>=1)upload.status='processing';this.emit();
   });
   if(status===200||status===201){
-   upload.status='done';upload.file=null;
+   upload.status='done';upload.file=null;this.mutations++;
    if(!this.photos.some(p=>p.id===body.photo.id))this.photos=[...this.photos,body.photo];
    this.uploads=this.uploads.filter(u=>u!==upload);this.emit();return;
   }
@@ -94,7 +99,7 @@ export class PhotoLibrary {
    const body=await response.json().catch(()=>({}));
    if(response.status===401){this.unauthorized();throw new Error('Sign in again to remove photos.');}
    if(!response.ok&&response.status!==404)throw new Error(body.error||'Could not remove the photo.');
-   this.photos=this.photos.filter(p=>p.id!==id);
+   this.photos=this.photos.filter(p=>p.id!==id);this.mutations++;
   }finally{this.removing.delete(id);this.emit();}
  }
  get busy(){return this.uploads.some(u=>['queued','uploading','processing'].includes(u.status));}
@@ -122,22 +127,32 @@ export function photoParts(library,{online=true,preview=null,confirm=false}={}){
 }
 
 export class PhotosView extends (globalThis.HTMLElement||class{}) {
+ // The card keeps one instance and moves it between renders (see mountPhotos), so reconnecting keeps the
+ // open preview, confirmation and upload list; only reset() (entering the page) clears them and reloads.
  connectedCallback(){
-  this.library=this.getRootNode().host?._photoLibrary;if(!this.library)return;
-  this.preview=null;this.confirm=false;this.frame=0;
-  this.unsubscribe=this.library.subscribe(()=>this.schedule());
-  this.addEventListener('click',this.onClick=event=>this.click(event));
-  this.addEventListener('change',this.onChange=event=>this.change(event));
-  this.addEventListener('keydown',this.onKey=event=>this.key(event));
-  this.online=()=>this.render();addEventListener('online',this.online);addEventListener('offline',this.online);
-  this.render();this.library.load();
+  this.library||=this.getRootNode().host?._photoLibrary;if(!this.library)return;
+  if(!this.initialized){
+   this.initialized=true;this.preview=null;this.confirm=false;this.frame=0;
+   this.addEventListener('click',event=>this.click(event));
+   this.addEventListener('change',event=>this.change(event));
+   this.addEventListener('keydown',event=>this.key(event));
+   this.online=()=>this.render();
+  }
+  this.unsubscribe?.();this.unsubscribe=this.library.subscribe(()=>this.schedule());
+  addEventListener('online',this.online);addEventListener('offline',this.online);
+  this.render();
  }
- disconnectedCallback(){this.unsubscribe?.();document.documentElement.classList.remove('photo-viewer-open');this.listHost=null;this.lastList=this.lastViewer=null;cancelAnimationFrame(this.frame);removeEventListener('online',this.online);removeEventListener('offline',this.online);}
+ disconnectedCallback(){
+  this.unsubscribe?.();this.unsubscribe=null;cancelAnimationFrame(this.frame);this.frame=0;
+  document.documentElement.classList.remove('photo-viewer-open');
+  removeEventListener('online',this.online);removeEventListener('offline',this.online);
+ }
+ reset(){this.preview=null;this.confirm=false;if(this.library){this.render();this.library.load();}}
  schedule(){if(!this.frame)this.frame=requestAnimationFrame(()=>{this.frame=0;this.render();});}
  render(){
   if(this.preview&&!this.library.photos.some(p=>p.id===this.preview)){this.preview=null;this.confirm=false;}
   if(!this.listHost){this.innerHTML='<div class="photo-list-host"></div><div class="photo-viewer-host"></div>';[this.listHost,this.viewerHost]=this.children;}
-  const focus=this.querySelector(':focus')?.dataset.photoAction;
+  const active=this.getRootNode().activeElement||document.activeElement,focus=active&&this.contains(active)?active.dataset?.photoAction:undefined;
   const {list,viewer}=photoParts(this.library,{online:this.library.online(),preview:this.preview,confirm:this.confirm});
   // Patch each part only when it changed, so progress updates never reload the open preview image.
   if(list!==this.lastList){this.listHost.innerHTML=list;this.lastList=list;}
@@ -179,6 +194,16 @@ export class PhotosView extends (globalThis.HTMLElement||class{}) {
   if(event.key==='ArrowRight')this.step(1);
  }
 }
+// Called after every card render. Reuses one view per card so unrelated HA updates never rebuild it.
+export function mountPhotos(host,main){
+ const slot=main.querySelector('[data-photos-slot]');
+ if(!slot){host._photosShown=false;return;}
+ const entering=!host._photosShown;host._photosShown=true;
+ host._photosView||=document.createElement('hearthglance-photos');
+ slot.replaceWith(host._photosView);
+ if(entering)host._photosView.reset();
+}
+
 if(globalThis.customElements&&!customElements.get('hearthglance-photos'))customElements.define('hearthglance-photos',PhotosView);
 
 export const photoStyles=`
