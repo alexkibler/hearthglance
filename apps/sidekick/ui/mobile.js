@@ -24,16 +24,17 @@ export function mobileMethods({icon,button,format,time,personStyle,weatherGlyph}
    main.dataset.view=this._page==='calendar'&&!this._mobileQuery?this._view:'';
    const same=this._phoneRenderKey===key,scroll=same?(oldScroll?.scrollTop||0):0,timelineScroll=same?oldTimeline?.scrollTop:null;
    this._phoneRenderKey=key;
-   const titles={home:this._config.household||'Our family',calendar:format(this._date,{month:'long',year:'numeric'}),tasks:'Tasks',list:this._mobileListOpen?this._config.lists[this._list].name:'Lists',meals:'Dinners',recipes:'Recipes'};
+   const titles={home:this._config.household||'Our family',calendar:format(this._date,{month:'long',year:'numeric'}),tasks:'Tasks',list:this._mobileListOpen?this._config.lists[this._list].name:'Lists',meals:'Dinners',recipes:'Recipes',photos:'Family Photos'};
    const listBack=this._native&&this._page==='list'&&this._mobileListOpen;
    const back=this._native?(listBack?button(icon('left'),'phone-back','phone-icon','aria-label="All lists"'):''):this._page==='home'?'<a class="phone-icon phone-home-mark ha-home" href="./" title="Hearthglance home" aria-label="Hearthglance home">'+icon('ha')+'</a>':button(icon('left'),'phone-back','phone-icon','aria-label="Back"');
    const header=this._native?(this._page==='list'?`<div class="native-list-tools">${listBack?`${back}<strong>${esc(titles.list)}</strong>`:''}${this._pageActions()}</div>`:''):`<header class="phone-header ${listBack?'has-list-back':''}">${back}<h1>${esc(titles[this._page]||'Family')}<small class="clock-time">${esc(format(new Date(),{hour:'numeric',minute:'2-digit'}))}</small></h1>${button(icon('settings'),'settings','phone-icon','aria-label="Card options"')}</header>`;
    const error=this._errors.size?`<div class="error-banner" role="alert"><span>${esc([...new Set(this._errors.values())].join(' '))}</span>${button('Retry','refresh','text-link')}</div>`:'';
-   const content=this._page==='home'?this._phoneHome():this._page==='calendar'?this._phoneCalendar():this._page==='tasks'?this._phoneTasks():this._page==='list'?this._phoneLists():this._page==='recipes'?this._phoneRecipes():this._phoneMeals();
+   const content=this._page==='home'?this._phoneHome():this._page==='calendar'?this._phoneCalendar():this._page==='tasks'?this._phoneTasks():this._page==='list'?this._phoneLists():this._page==='recipes'?this._phoneRecipes():this._page==='photos'?'<div data-photos-slot></div>':this._phoneMeals();
    const toolbar=this._page==='calendar'?this._phoneCalendarTools():'';
-   const canAdd=this._page!=='list'||this._mobileListOpen;
+   const canAdd=this._page!=='photos'&&(this._page!=='list'||this._mobileListOpen);
    const labels={home:'Add to your family',calendar:'Add event',tasks:'Add chore',list:'Add item',meals:'Plan dinner',recipes:'Add recipe'};
    main.innerHTML=header+toolbar+`<div class="phone-scroll">${error}${content}</div>`+(!this._native&&canAdd?button(icon('plus'),'phone-add','phone-fab',`aria-label="${labels[this._page]}"`):'');
+   this._mountPhotos?.(main);
    main.querySelector('.phone-scroll').scrollTop=scroll;
    const timeline=main.querySelector('.phone-timeline-scroll');
    if(timeline)timeline.scrollTop=timelineScroll??(dateKey(this._date)===dateKey(new Date())?Math.max(0,new Date().getHours()-1):8)*64;
@@ -44,7 +45,7 @@ export function mobileMethods({icon,button,format,time,personStyle,weatherGlyph}
    this._updatePhoneNow();
   },
   _phoneHome(){
-   const features=[['calendar','Calendar','calendar','#f9dfd7','#df795e'],['tasks','Tasks','check','#e8eed8','#88a55a'],['list','Lists','list','#f5efd0','#b49b38'],['meals','Dinners','meals','#f2e4cf','#b8884c'],['recipes','Recipes','book','#dfedf0','#76a1af'],['settings','Settings','settings','#ece7f2','#a186bd']];
+   const features=[['calendar','Calendar','calendar','#f9dfd7','#df795e'],['tasks','Tasks','check','#e8eed8','#88a55a'],['list','Lists','list','#f5efd0','#b49b38'],['meals','Dinners','meals','#f2e4cf','#b8884c'],['recipes','Recipes','book','#dfedf0','#76a1af'],['photos','Photos','photos','#f3dde3','#b5607a'],['settings','Settings','settings','#ece7f2','#a186bd']];
    const events=this._visibleEvents().filter(e=>e.end>new Date()).sort((a,b)=>a.start-b.start).slice(0,5);
    const navigation=this._native?'':`<section class="phone-weather-strip" aria-label="Weather and solar forecast">${this._weatherHTML()}</section><div class="phone-feature-grid">${features.filter(([page])=>this._pages.includes(page)).map(([page,label,glyph,pale,color])=>button(`<span class="phone-feature-icon" style="--tile-bg:${pale};--tile-ink:${color}">${icon(glyph)}</span><span>${label}</span>`,page==='settings'?'settings':'phone-page','phone-feature',`data-page="${page}"`)).join('')}</div>`;
    return `${navigation}<section class="phone-home-preview"><div class="phone-preview-head"><div><small>${format(new Date(),{weekday:'long'})}</small><h2>${format(new Date(),{month:'long',day:'numeric'})}</h2></div>${(this._native||this._standalone)?this._pageActions():''}</div><div class="phone-section-heading"><h3>Coming up</h3>${this._pageButton('View calendar','calendar')}</div>${events.length?events.map(e=>`<div class="phone-upcoming"><span>${format(e.start,{month:'short',day:'numeric'})}</span>${this._phoneEvent(e)}</div>`).join(''):`<div class="empty">${icon('sun')}A little room to breathe.<br>No events in the next seven days.</div>`}</section>`;
