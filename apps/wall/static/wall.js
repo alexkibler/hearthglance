@@ -18,7 +18,13 @@ tick();setInterval(tick,15000);
 
 function layer(img){
  return {
-  load:url=>{img.src=new URL(url,base).href;return img.decode();},
+  // Decode before showing to avoid a jank frame, but never wait on decode() forever: Chromium can hold it
+  // while the page is hidden, and a failed load must still reject so playback skips the photo.
+  load:url=>new Promise((resolve,reject)=>{
+   img.onload=()=>{const done=()=>resolve();Promise.race([img.decode(),new Promise(r=>setTimeout(r,2000))]).then(done,done);};
+   img.onerror=()=>reject(new Error('Photo did not load'));
+   img.src=new URL(url,base).href;
+  }),
   show:()=>img.classList.add('visible'),
   hide:()=>img.classList.remove('visible'),
   clear:()=>{img.classList.remove('visible');img.removeAttribute('src');},
