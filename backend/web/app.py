@@ -333,12 +333,14 @@ class Handler(BaseHTTPRequestHandler):
         template = (self.app.wall/'index.html').read_text()
         return template.replace('{{state}}', state).replace('{{actions}}', actions).replace('{{interval}}', str(self.app.wall_interval))
 
-    def wall_events(self, changes):
-        """Server-Sent Events: small change notices only. Clients fetch api/photos after each one."""
+    def wall_events(self, key, changes):
+        """Server-Sent Events: small change notices only. Clients fetch api/photos after each one.
+
+        `key` is the session already verified by the route. Everything after acquiring a slot runs inside the
+        try/finally, so no setup failure can leak stream capacity."""
         streams = self.app.wall_streams
         if not streams.acquire(blocking=False):
             self.send_json({'error':'Too many Wall connections.'},503);return
-        key = self.app.sessions.key(self.cookie('hg_session'))
         try:
             self.close_connection = True
             self.send_response(200)
@@ -437,15 +439,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/wall':
             self.redirect(self.app.public+'wall/');return
         if path == '/wall/events':
-            self.identity()
-            self.wall_events(self.photo_store().changes);return
+            key, _ = self.identity()
+            self.wall_events(key, self.photo_store().changes);return
         if path == '/wall/':
             body = self.wall_page().encode()
             self.respond_headers(200,'text/html; charset=utf-8',len(body));self.wfile.write(body);return
         if path.startswith('/wall/'):
             # Wall is a separate entry point outside the Sidekick service-worker shell.
             asset = path[len('/wall/'):]
-            if asset not in {'wall.css','wall.js','slideshow.js'}: self.send_error(404);return
+            if asset not in {'wall.css','wall.js','slideshow.js','album.js'}: self.send_error(404);return
             body = (self.app.wall/asset).read_bytes()
             self.respond_headers(200,mimetypes.guess_type(asset)[0] or 'application/octet-stream',len(body))
             self.wfile.write(body);return

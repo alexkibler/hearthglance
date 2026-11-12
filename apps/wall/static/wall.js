@@ -1,12 +1,13 @@
 // Wall Display client: clock, live album updates over Server-Sent Events, and the manual slideshow.
 import {Slideshow} from './slideshow.js';
+import {Album} from './album.js';
 
 const body=document.body,base=new URL('../',location.href);
 const $=selector=>document.querySelector(selector);
 const home=$('#home'),show=$('#slideshow'),connection=$('#connection');
 const params=new URLSearchParams(location.search);
 const seconds=Number(params.get('interval')||body.dataset.interval)||12;
-const state={photos:[],version:null,connected:true,events:null,retry:5000};
+const state={photos:[],connected:true,events:null,retry:5000};
 
 function tick(){
  const now=new Date();
@@ -33,24 +34,20 @@ function setConnected(value){
 }
 function count(n){const el=$('#count');if(el)el.textContent=n?`${n} photo${n===1?'':'s'}`:'No photos yet';}
 
-async function refresh(){
- try{
-  const response=await fetch(new URL('api/photos',base),{credentials:'same-origin',cache:'no-store'});
-  if(response.status===401){location.reload();return;}          // the server renders the sign-in view
-  if(!response.ok)return;
-  const data=await response.json();
-  state.photos=data.photos;state.version=data.version;
-  count(state.photos.length);slideshow.update(state.photos);
- }catch{setConnected(false);}
-}
+const album=new Album({
+ request:()=>fetch(new URL('api/photos',base),{credentials:'same-origin',cache:'no-store'}),
+ apply:data=>{state.photos=data.photos;count(state.photos.length);slideshow.update(state.photos);},
+ unauthorized:()=>location.reload(),                               // the server renders the sign-in view
+ offline:()=>setConnected(false),
+});
+const refresh=()=>album.refresh();
 
 function listen(){
  if(body.dataset.state!=='ready'||!('EventSource' in window))return;
  const events=state.events=new EventSource('events');
  events.addEventListener('open',()=>{state.retry=5000;setConnected(true);refresh();});   // catch anything missed
  events.addEventListener('photos',event=>{
-  const {version}=JSON.parse(event.data);
-  if(version!==state.version)refresh();
+  album.notice(JSON.parse(event.data).version);
  });
  events.addEventListener('error',()=>{
   setConnected(false);

@@ -54,6 +54,14 @@ class WallTests(unittest.TestCase):
         response = conn.getresponse(); response.conn = conn
         return response
 
+    def slot_returns(self, within=3):
+        deadline = time.monotonic() + within
+        while time.monotonic() < deadline:                      # the server notices a closed socket on its next write
+            if self.app.wall_streams.acquire(blocking=False):
+                self.app.wall_streams.release(); return True
+            time.sleep(0.05)
+        return False
+
     @staticmethod
     def event(response):
         """Read one SSE block, skipping keep-alive comments."""
@@ -81,7 +89,7 @@ class WallTests(unittest.TestCase):
         self.assertIn('data-state="unavailable"', self.get('wall/')[2])
 
     def test_assets_are_served_and_the_template_is_not(self):
-        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('wall.css', 'text/css')):
+        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('album.js', 'text/javascript'), ('wall.css', 'text/css')):
             status, headers, _ = self.get('wall/' + asset, auth=False)
             self.assertEqual((status, headers['Content-Type']), (200, kind))
         self.assertEqual(self.get('wall/index.html', auth=False)[0], 404)
@@ -138,6 +146,29 @@ class WallTests(unittest.TestCase):
             if response.status == 200: break
             response.read(); time.sleep(0.1)
         self.assertEqual(response.status, 200)
+
+    def test_a_failure_during_stream_setup_releases_its_slot(self):
+        """Codex #8 review: sign-out or any error after the slot is taken must not leak capacity."""
+        self.app.wall_streams = threading.BoundedSemaphore(1)
+        real_key, calls = self.app.sessions.key, []
+        def signed_out_after_first_check(sid):
+            calls.append(sid)
+            if len(calls) > 1: raise app.LoginRequired()
+            return real_key(sid)
+        with patch.object(self.app.sessions, 'key', side_effect=signed_out_after_first_check):
+            response = self.stream()
+            if response.status == 200: self.event(response)
+            response.close(); response.conn.close()
+        self.assertTrue(self.slot_returns())                                  # sign-out race leaked nothing
+        with patch.object(app.Handler, 'send_response', side_effect=OSError('client went away')):
+            conn = self.connect()
+            conn.request('GET', '/hearthglance/wall/events', headers={'Cookie': 'hg_session=' + self.sid})
+            try: conn.getresponse().read()
+            except (http.client.HTTPException, OSError): pass
+        self.assertTrue(self.slot_returns())                                  # the slot came back
+        self.app.sessions.remove(self.app.sessions.key(self.sid))
+        self.assertEqual(self.get('wall/events')[0], 401)                     # signed out: refused before a slot is taken
+        self.assertTrue(self.slot_returns(0.2))
 
     def test_streams_are_recycled_after_their_lifetime(self):
         self.app.wall_lifetime = 0.2
