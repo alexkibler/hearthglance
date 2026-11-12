@@ -163,13 +163,16 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             application=app.runtime(self.env(folder,HG_WALL=str(WALL)),Path(folder))
             self.assertEqual(application.prefix,'/hearthglance');self.assertEqual(application.wall,WALL)
+            self.assertEqual(application.wall_idle,0)
+            self.assertEqual(app.runtime(self.env(folder,HG_WALL_IDLE_MINUTES='15'),Path(folder)).wall_idle,15)
     def test_missing_or_unusable_mounts_fail_with_a_clear_message(self):
         with tempfile.TemporaryDirectory() as folder:
             env=self.env(folder)
             cases={'config not found':dict(env,HG_CONFIG=str(Path(folder)/'none.json')),
                 'data directory':dict(env,HG_SESSIONS=str(Path(folder)/'missing'/'sessions.json')),
                 'set HA_URL':{k:v for k,v in env.items() if k!='HA_URL'},
-                'https:// origins':dict(env,HG_FRAME_ANCESTORS='*')}
+                'https:// origins':dict(env,HG_FRAME_ANCESTORS='*'),
+                'HG_WALL_IDLE_MINUTES':dict(env,HG_WALL_IDLE_MINUTES='soon')}
             for message,value in cases.items():
                 with self.assertRaises(SystemExit) as raised:app.runtime(value,Path(folder))
                 self.assertIn(message,str(raised.exception))

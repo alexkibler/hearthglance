@@ -32,6 +32,7 @@ Startup exits with a one-line error when `config.json` is missing or unreadable,
 | `HG_FRAME_ANCESTORS` | empty | Extra `https://` origins allowed to frame the app. Same origin is always allowed. |
 | `HG_MEDIA` | `/media` | Photo media root. Unset it to disable photos. |
 | `HG_PHOTO_DECODERS` | `1` | Concurrent photo decode workers |
+| `HG_WALL_IDLE_MINUTES` | `0` | Minutes of inactivity before Wall starts the slideshow; `0` is off |
 
 ### Compatibility with the pre-monorepo layout
 
@@ -101,6 +102,8 @@ When Home Assistant proxies the app on its own origin, the default `frame-ancest
 ## Wall
 
 Wall is served at `<base>/wall/`. That path stays outside the Sidekick service worker's shell and photo caches, so kiosks always load it from the network. Sign in on each kiosk once at `<base>/wall/`; the sign-in link returns to Wall. Append `?interval=<seconds>` (3–300, default 12) to change the slide interval for one kiosk.
+
+Idle slideshow is off by default. Set `HG_WALL_IDLE_MINUTES` (1–240) to start the slideshow after that many quiet minutes on every kiosk, or override a single kiosk with `?idle=<minutes>` (`?idle=0` turns it off there). Any tap returns to the previous view and restarts the countdown.
 
 ## Local staging
 

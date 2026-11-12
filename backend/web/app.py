@@ -273,6 +273,7 @@ class Application:
         # Each Wall stream holds one server thread; bound them and recycle long-lived ones.
         self.wall_streams = threading.BoundedSemaphore(8)
         self.wall_heartbeat, self.wall_lifetime, self.wall_interval = 25, 900, 12
+        self.wall_idle = 0                      # minutes before the idle slideshow starts; 0 is off
         self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
@@ -331,7 +332,8 @@ class Handler(BaseHTTPRequestHandler):
             actions = f'<button id="play" class="play" type="button">Play slideshow</button><p id="count" class="count">{label}</p>'
             state = 'ready'
         template = (self.app.wall/'index.html').read_text()
-        return template.replace('{{state}}', state).replace('{{actions}}', actions).replace('{{interval}}', str(self.app.wall_interval))
+        return (template.replace('{{state}}', state).replace('{{actions}}', actions)
+            .replace('{{interval}}', str(self.app.wall_interval)).replace('{{idle}}', str(self.app.wall_idle)))
 
     def wall_events(self, key, changes):
         """Server-Sent Events: small change notices only. Clients fetch api/photos after each one.
@@ -447,7 +449,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/wall/'):
             # Wall is a separate entry point outside the Sidekick service-worker shell.
             asset = path[len('/wall/'):]
-            if asset not in {'wall.css','wall.js','slideshow.js','album.js'}: self.send_error(404);return
+            if asset not in {'wall.css','wall.js','slideshow.js','album.js','idle.js'}: self.send_error(404);return
             body = (self.app.wall/asset).read_bytes()
             self.respond_headers(200,mimetypes.guess_type(asset)[0] or 'application/octet-stream',len(body))
             self.wfile.write(body);return
@@ -539,13 +541,18 @@ def runtime(env, root):
     if not os.access(data_dir, os.W_OK): raise SystemExit(f'Hearthglance: data directory {data_dir} is not writable by uid {os.getuid()}')
     try: frame_ancestors(env.get('HG_FRAME_ANCESTORS',''))
     except ValueError as error: raise SystemExit(f'Hearthglance: {error}') from None
+    try: idle = int(env.get('HG_WALL_IDLE_MINUTES', '0'))
+    except ValueError: idle = -1
+    if not 0 <= idle <= 240: raise SystemExit('Hearthglance: HG_WALL_IDLE_MINUTES must be 0 (off) to 240')
     photos = None
     if env.get('HG_MEDIA'):
         photos = Photos(env['HG_MEDIA'], data_dir/'photos.sqlite3', decoders=env.get('HG_PHOTO_DECODERS', 1))
         photos.recover_periodically()
-    return Application(config, env['HA_URL'], env['HA_PUBLIC_URL'], env['HG_PUBLIC_URL'], sessions,
+    application = Application(config, env['HA_URL'], env['HA_PUBLIC_URL'], env['HG_PUBLIC_URL'], sessions,
         Path(env.get('HG_STATIC', root/'static')), Path(env.get('HG_WALL', root/'wall')),
         env.get('HG_FRAME_ANCESTORS',''), photos)
+    application.wall_idle = idle
+    return application
 
 
 if __name__ == '__main__':

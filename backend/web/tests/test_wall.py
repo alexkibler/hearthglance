@@ -88,8 +88,14 @@ class WallTests(unittest.TestCase):
         (Path(self.temp.name)/'media'/MARKER).unlink()
         self.assertIn('data-state="unavailable"', self.get('wall/')[2])
 
+    def test_idle_setting_reaches_the_page_and_defaults_to_off(self):
+        self.assertIn('data-idle="0"', self.get('wall/')[2])
+        self.app.wall_idle = 10
+        self.assertIn('data-idle="10"', self.get('wall/')[2])
+
     def test_assets_are_served_and_the_template_is_not(self):
-        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('album.js', 'text/javascript'), ('wall.css', 'text/css')):
+        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('album.js', 'text/javascript'),
+                            ('idle.js', 'text/javascript'), ('wall.css', 'text/css')):
             status, headers, _ = self.get('wall/' + asset, auth=False)
             self.assertEqual((status, headers['Content-Type']), (200, kind))
         self.assertEqual(self.get('wall/index.html', auth=False)[0], 404)

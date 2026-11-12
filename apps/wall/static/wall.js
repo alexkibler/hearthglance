@@ -1,6 +1,7 @@
 // Wall Display client: clock, live album updates over Server-Sent Events, and the manual slideshow.
 import {Slideshow} from './slideshow.js';
 import {Album} from './album.js';
+import {IdleTimer,idleMinutes,onIdle,onAlbum} from './idle.js';
 
 const body=document.body,base=new URL('../',location.href);
 const $=selector=>document.querySelector(selector);
@@ -42,7 +43,10 @@ function count(n){const el=$('#count');if(el)el.textContent=n?`${n} photo${n===1
 
 const album=new Album({
  request:()=>fetch(new URL('api/photos',base),{credentials:'same-origin',cache:'no-store'}),
- apply:data=>{state.photos=data.photos;count(state.photos.length);slideshow.update(state.photos);},
+ apply:data=>{
+  state.photos=data.photos;count(state.photos.length);slideshow.update(state.photos);
+  if(onAlbum({playing:!show.hidden,photos:state.photos,timer:idle})==='arm')idle.poke();
+ },
  unauthorized:()=>location.reload(),                               // the server renders the sign-in view
  offline:()=>setConnected(false),
 });
@@ -65,11 +69,18 @@ function listen(){
 }
 
 function play(){
+ idle.stop();
  home.hidden=true;show.hidden=false;show.classList.remove('settled');
  setTimeout(()=>show.classList.add('settled'),100);
  slideshow.start(state.photos);
 }
-function stop(){slideshow.stop();show.hidden=true;home.hidden=false;$('#play')?.focus();}
+function stop(){slideshow.stop();show.hidden=true;home.hidden=false;$('#play')?.focus();idle.poke();}
+
+// Idle slideshow (#10): off unless the server or ?idle= sets minutes. A tap returns to the previous view.
+const idle=new IdleTimer({minutes:body.dataset.state==='ready'?idleMinutes(location.search,body.dataset.idle):0,
+ onIdle:()=>{if(onIdle({playing:!show.hidden,photos:state.photos})==='play')play();}});
+for(const type of ['pointerdown','keydown','touchstart'])document.addEventListener(type,()=>{if(show.hidden)idle.poke();},{passive:true});
+idle.poke();
 
 document.addEventListener('click',event=>{
  if(event.target.closest('#play')){play();return;}
