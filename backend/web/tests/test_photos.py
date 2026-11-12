@@ -67,6 +67,7 @@ class DerivativeTests(Store):
         photo, created = self.put(oriented_jpeg())
         self.assertTrue(created)
         self.assertEqual((photo['width'], photo['height']), (600, 800))
+        self.assertEqual(photo['source'], 'JPEG')
         for variant in ('display', 'thumb'):
             with Image.open(io.BytesIO(self.store.file(photo['id'], variant))) as result:
                 self.assertEqual(result.format, 'JPEG')

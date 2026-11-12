@@ -20,3 +20,4 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:clamp(1
 .slideshow-hint{position:absolute;right:2vw;bottom:2vh;margin:0;font-size:.7em;color:rgba(255,255,255,.55);opacity:1;transition:opacity 1s 3s}
 .slideshow.settled .slideshow-hint{opacity:0}
 @media (prefers-reduced-motion:reduce){.slide{transition:none}}
+.debug{position:fixed;left:1vw;top:1vh;z-index:10;margin:0;padding:.4em .6em;font:14px/1.3 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,.7);border-radius:6px;pointer-events:none}

@@ -85,4 +85,12 @@ document.addEventListener('click',event=>{
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!show.hidden)stop();});
 
+// ?debug=1 shows the CSS viewport, device pixel ratio and stream state, for recording kiosk measurements (#9).
+if(params.get('debug')==='1'){
+ const panel=document.createElement('pre');panel.className='debug';panel.setAttribute('aria-hidden','true');document.body.append(panel);
+ const update=()=>{panel.textContent=`${innerWidth}×${innerHeight} CSS px @${devicePixelRatio}x = ${Math.round(innerWidth*devicePixelRatio)}×${Math.round(innerHeight*devicePixelRatio)}\n`+
+  `stream ${state.events?['connecting','open','closed'][state.events.readyState]:'off'} · album v${album.version??'–'} · ${state.photos.length} photos`;};
+ update();setInterval(update,1000);addEventListener('resize',update);
+}
+
 if(body.dataset.state==='ready'){refresh();listen();}
