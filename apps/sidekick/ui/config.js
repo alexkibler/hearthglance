@@ -1,0 +1,78 @@
+const palette = [
+  ['#397f86', '#e8f2f2'], ['#9a6e8e', '#f3eaf1'],
+  ['#b58437', '#faf1dc'], ['#527d59', '#eaf2e7'],
+];
+function entity(value, domain, field, optional = false) {
+  if (optional && !value) return undefined;
+  if (typeof value !== 'string' || !new RegExp(`^${domain}\\.[a-z0-9_]+$`).test(value)) {
+    throw new Error(`Hearthglance: ${field} must be a ${domain} entity ID.`);
+  }
+  return value;
+}
+const color = (value, fallback) => {
+  if (value == null) return fallback;
+  if (typeof value !== 'string' || !/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(value)) throw new Error('Hearthglance: colors must be #RGB or #RRGGBB.');
+  return value;
+};
+function array(value, field, required = false) {
+  if (value == null && !required) return [];
+  if (!Array.isArray(value) || (required && !value.length) || value.some(v => !v || typeof v !== 'object')) throw new Error(`Hearthglance: ${field} must be ${required ? 'a nonempty' : 'an'} array of objects.`);
+  return value;
+}
+function distinct(values, field) {
+  if (new Set(values).size !== values.length) throw new Error(`Hearthglance: ${field} must be unique.`);
+}
+export function normalizeConfig(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('Hearthglance: provide a card configuration.');
+  const pages = ['home', 'calendar', 'tasks', 'list', 'meals', 'recipes', 'header'];
+  if (raw.page != null && !pages.includes(raw.page)) throw new Error('Hearthglance: unknown page.');
+  const native = raw.page != null;
+  const people = array(raw.people, 'people', !native).map((p, i) => {
+    if (typeof p.id !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(p.id) || p.id === 'all') throw new Error('Hearthglance: person IDs must start with a letter and contain lowercase letters, numbers, _ or -. The ID all is reserved.');
+    if (typeof p.name !== 'string' || !p.name.trim()) throw new Error('Hearthglance: each person needs a name.');
+    return {id: p.id, name: p.name, initial: String(p.initial || p.name.trim()[0]), color: color(p.color, palette[i % 4][0]), pale: color(p.pale, palette[i % 4][1]), todo: entity(p.todo, 'todo', `people[${i}].todo`, true)};
+  });
+  distinct(people.map(p => p.id), 'person IDs');
+  const calendars = array(raw.calendars, 'calendars', !native).map((c, i) => {
+    const id = entity(c.entity, 'calendar', `calendars[${i}].entity`);
+    const person = c.person || people[0]?.id;
+    if (!people.some(p => p.id === person)) throw new Error(`Hearthglance: calendar ${id} references an unknown person.`);
+    if (c.kind && c.kind !== 'meals') throw new Error('Hearthglance: calendar kind can only be meals. Omit it for regular events.');
+    return {entity: id, name: String(c.name || id.split('.')[1].replaceAll('_', ' ')), person, kind: c.kind, auxiliary: Boolean(c.auxiliary), google: Boolean(c.google)};
+  });
+  distinct(calendars.map(c => c.entity), 'calendar entities');
+  const lists = array(raw.lists, 'lists').map((l, i) => ({entity: entity(l.entity, 'todo', `lists[${i}].entity`), name: String(l.name || 'Shared list')}));
+  const recipes = raw.recipes?.startsWith?.('sensor.') ? entity(raw.recipes, 'sensor', 'recipes') : entity(raw.recipes, 'todo', 'recipes', true);
+  distinct([...people.map(p => p.todo), ...lists.map(l => l.entity), recipes?.startsWith('todo.') ? recipes : undefined].filter(Boolean), 'to-do entities across people, lists, and recipes');
+  let solar;
+  if (raw.solar != null) {
+    if (typeof raw.solar !== 'object' || Array.isArray(raw.solar)) throw new Error('Hearthglance: solar must be an object of sensor entity IDs.');
+    solar = Object.fromEntries(['power', 'today', 'forecast_today', 'forecast_tomorrow'].filter(key => raw.solar[key] !== undefined).map(key => [key, entity(raw.solar[key], 'sensor', `solar.${key}`)]));
+    if (raw.solar.forecasts !== undefined) {
+      if (!Array.isArray(raw.solar.forecasts) || !raw.solar.forecasts.length) throw new Error('Hearthglance: solar.forecasts must be a nonempty list of daily sensor IDs, starting with today.');
+      solar.forecasts = raw.solar.forecasts.map((id, index) => entity(id, 'sensor', `solar.forecasts[${index}]`));
+      distinct(solar.forecasts, 'daily solar forecast sensors');
+    }
+    if (!Object.keys(solar).length) throw new Error('Hearthglance: solar needs today, forecasts, forecast_today, or forecast_tomorrow.');
+  }
+  const default_calendar = raw.default_calendar ? entity(raw.default_calendar, 'calendar', 'default_calendar') : calendars.find(c => !c.kind)?.entity;
+  if (default_calendar && !calendars.some(c => c.entity === default_calendar && c.kind !== 'meals')) throw new Error('Hearthglance: default_calendar must be a configured regular calendar.');
+  if (raw.storage_key != null && (typeof raw.storage_key !== 'string' || !raw.storage_key.trim())) throw new Error('Hearthglance: storage_key must be a nonempty string.');
+  let routes;
+  if (raw.routes != null) {
+    if (typeof raw.routes !== 'object' || Array.isArray(raw.routes)) throw new Error('Hearthglance: routes must be an object of HA view paths.');
+    routes = Object.fromEntries(Object.entries(raw.routes).map(([page, path]) => {
+      if (!pages.includes(page) || typeof path !== 'string' || !/^\/(?!\/)/.test(path) || /[\\\s\u0000-\u001f]/.test(path)) throw new Error('Hearthglance: routes must be local HA paths beginning with one /.');
+      return [page, path];
+    }));
+  }
+  if (native && ['home', 'calendar', 'meals'].includes(raw.page) && !calendars.length) throw new Error('Hearthglance: this card needs a calendar.');
+  if (raw.page === 'tasks' && !people.some(p => p.todo)) throw new Error('Hearthglance: the chores card needs a person with a to-do list.');
+  if (raw.page === 'list' && !lists.length) throw new Error('Hearthglance: the lists card needs a list.');
+  if (raw.page === 'meals' && !calendars.some(c => c.kind === 'meals')) throw new Error('Hearthglance: the meals card needs a meal calendar.');
+  if (raw.page === 'recipes' && !recipes) throw new Error('Hearthglance: the recipes card needs a recipe entity.');
+  return {type: raw.type || 'custom:hearthglance-card', household: String(raw.household || 'Our family'), people, calendars, lists, recipes, solar, weather: entity(raw.weather, 'weather', 'weather', true), default_calendar, storage_key: raw.storage_key || (calendars.length ? calendars.map(c => c.entity) : [...people.map(p => p.todo), ...lists.map(l => l.entity), recipes].filter(Boolean)).sort().join(':') || 'header', ...(native ? {page: raw.page} : {}), ...(routes ? {routes} : {})};
+}
+export function enabledPages(config) {
+  return ['home', 'calendar', ...(config.people.some(p => p.todo) ? ['tasks'] : []), ...(config.lists.length ? ['list'] : []), ...(config.calendars.some(c => c.kind === 'meals') ? ['meals'] : []), ...(config.recipes ? ['recipes'] : []), 'settings'];
+}
