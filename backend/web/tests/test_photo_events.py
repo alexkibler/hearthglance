@@ -1,4 +1,4 @@
-"""Wall page, sign-in return and live event stream tests (synthetic data only)."""
+"""Live photo event stream (api/photos/events) used by the dashboard slideshow. Synthetic data only."""
 import http.client
 import io
 import json
@@ -9,7 +9,6 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlsplit
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 import app
@@ -17,18 +16,17 @@ from photos import MARKER, Photos
 from test_photos import image_bytes
 
 CONFIG = {'household': 'Test', 'people': [], 'calendars': [], 'lists': []}
-WALL = Path(app.__file__).resolve().parents[2]/'apps'/'wall'/'static'
 
 
-class WallTests(unittest.TestCase):
+class PhotoEventTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         base = Path(self.temp.name)
         (base/'media').mkdir(); (base/'media'/MARKER).write_text('x')
         self.store = Photos(base/'media', base/'photos.sqlite3', isolate=False)
         self.app = app.Application(CONFIG, 'http://ha.test', 'https://ha.test', 'https://app.test/hearthglance/',
-            base/'sessions.json', base, WALL, photos=self.store)
-        self.app.wall_heartbeat = 0.05
+            base/'sessions.json', base, photos=self.store)
+        self.app.event_heartbeat = 0.05
         self.sid = self.app.sessions.create({'access_token': 't', 'refresh_token': 'r', 'expires_in': 3600})
         self.server = app.serve(self.app, '127.0.0.1', 0)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -50,15 +48,15 @@ class WallTests(unittest.TestCase):
 
     def stream(self):
         conn = self.connect()
-        conn.request('GET', '/hearthglance/wall/events', headers={'Cookie': 'hg_session=' + self.sid})
+        conn.request('GET', '/hearthglance/api/photos/events', headers={'Cookie': 'hg_session=' + self.sid})
         response = conn.getresponse(); response.conn = conn
         return response
 
     def slot_returns(self, within=3):
         deadline = time.monotonic() + within
         while time.monotonic() < deadline:                      # the server notices a closed socket on its next write
-            if self.app.wall_streams.acquire(blocking=False):
-                self.app.wall_streams.release(); return True
+            if self.app.event_streams.acquire(blocking=False):
+                self.app.event_streams.release(); return True
             time.sleep(0.05)
         return False
 
@@ -76,43 +74,6 @@ class WallTests(unittest.TestCase):
             fields = dict(l.split(': ', 1) for l in lines if not l.startswith(':'))
             return fields
 
-    def test_page_renders_signed_out_ready_and_unavailable_states(self):
-        status, headers, body = self.get('wall/', auth=False)
-        self.assertEqual(status, 200); self.assertIn('data-state="signed-out"', body)
-        self.assertIn('href="../auth/login?next=wall"', body); self.assertEqual(headers['Cache-Control'], 'no-store')
-        self.assertNotIn('{{', body)
-        status, _, body = self.get('wall/')
-        self.assertIn('data-state="ready"', body); self.assertIn('No photos yet', body); self.assertIn('id="play"', body)
-        self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0001')
-        self.assertIn('>1 photo<', self.get('wall/')[2])
-        (Path(self.temp.name)/'media'/MARKER).unlink()
-        self.assertIn('data-state="unavailable"', self.get('wall/')[2])
-
-    def test_idle_setting_reaches_the_page_and_defaults_to_off(self):
-        self.assertIn('data-idle="0"', self.get('wall/')[2])
-        self.app.wall_idle = 10
-        self.assertIn('data-idle="10"', self.get('wall/')[2])
-
-    def test_assets_are_served_and_the_template_is_not(self):
-        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('album.js', 'text/javascript'),
-                            ('idle.js', 'text/javascript'), ('wall.css', 'text/css')):
-            status, headers, _ = self.get('wall/' + asset, auth=False)
-            self.assertEqual((status, headers['Content-Type']), (200, kind))
-        self.assertEqual(self.get('wall/index.html', auth=False)[0], 404)
-
-    def test_sign_in_returns_to_wall_only_for_the_allowlisted_target(self):
-        def callback(next_value):
-            status, headers, _ = self.get('auth/login' + next_value, auth=False)
-            state = parse_qs(urlsplit(headers['Location']).query)['state'][0]
-            conn = self.connect()
-            conn.request('GET', f'/hearthglance/auth/callback?code=c&state={state}', headers={'Cookie': 'hg_oauth=' + state})
-            response = conn.getresponse(); response.read()
-            return response.getheader('Location')
-        with patch.object(self.app.sessions, 'token_request', return_value={'access_token': 'a', 'refresh_token': 'r', 'expires_in': 60}):
-            self.assertEqual(callback('?next=wall'), 'https://app.test/hearthglance/wall/')
-            self.assertEqual(callback(''), 'https://app.test/hearthglance/')
-            self.assertEqual(callback('?next=https://evil.test/'), 'https://app.test/hearthglance/')
-
     def test_stream_announces_current_version_then_changes_with_keep_alives(self):
         response = self.stream()
         self.assertEqual(response.status, 200)
@@ -123,27 +84,27 @@ class WallTests(unittest.TestCase):
         self.assertEqual((first['event'], json.loads(first['data'])), ('photos', {'version': 0}))
         self.assertEqual(first['retry'], '5000')
         time.sleep(0.15)                                        # keep-alive comments flow while idle
-        photo, _ = self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0002')
+        photo, _ = self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'events-test-key-0002')
         self.assertEqual(json.loads(self.event(response)['data']), {'version': 1})
         self.store.remove(photo['id'])
         self.assertEqual(json.loads(self.event(response)['data']), {'version': 2})
 
     def test_reconnect_receives_the_version_it_missed(self):
         first = self.stream(); self.event(first); first.close()
-        self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0003')
+        self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'events-test-key-0003')
         again = self.stream()
         self.assertEqual(json.loads(self.event(again)['data']), {'version': 1})
 
     def test_stream_requires_a_session_and_ends_when_it_is_revoked(self):
-        self.assertEqual(self.get('wall/events', auth=False)[0], 401)
+        self.assertEqual(self.get('api/photos/events', auth=False)[0], 401)
         response = self.stream(); self.event(response)
         self.app.sessions.remove(self.app.sessions.key(self.sid))
         self.assertIsNone(self.event(response))                 # server closes the stream
 
     def test_streams_are_bounded_and_released(self):
-        self.app.wall_streams = threading.BoundedSemaphore(1)
+        self.app.event_streams = threading.BoundedSemaphore(1)
         held = self.stream(); self.event(held)
-        status, _, body = self.get('wall/events')
+        status, _, body = self.get('api/photos/events')
         self.assertEqual(status, 503); self.assertIn('Too many', body)
         held.close(); held.conn.close()
         deadline = time.monotonic() + 3
@@ -155,7 +116,7 @@ class WallTests(unittest.TestCase):
 
     def test_a_failure_during_stream_setup_releases_its_slot(self):
         """Codex #8 review: sign-out or any error after the slot is taken must not leak capacity."""
-        self.app.wall_streams = threading.BoundedSemaphore(1)
+        self.app.event_streams = threading.BoundedSemaphore(1)
         real_key, calls = self.app.sessions.key, []
         def signed_out_after_first_check(sid):
             calls.append(sid)
@@ -168,16 +129,16 @@ class WallTests(unittest.TestCase):
         self.assertTrue(self.slot_returns())                                  # sign-out race leaked nothing
         with patch.object(app.Handler, 'send_response', side_effect=OSError('client went away')):
             conn = self.connect()
-            conn.request('GET', '/hearthglance/wall/events', headers={'Cookie': 'hg_session=' + self.sid})
+            conn.request('GET', '/hearthglance/api/photos/events', headers={'Cookie': 'hg_session=' + self.sid})
             try: conn.getresponse().read()
             except (http.client.HTTPException, OSError): pass
         self.assertTrue(self.slot_returns())                                  # the slot came back
         self.app.sessions.remove(self.app.sessions.key(self.sid))
-        self.assertEqual(self.get('wall/events')[0], 401)                     # signed out: refused before a slot is taken
+        self.assertEqual(self.get('api/photos/events')[0], 401)                     # signed out: refused before a slot is taken
         self.assertTrue(self.slot_returns(0.2))
 
     def test_streams_are_recycled_after_their_lifetime(self):
-        self.app.wall_lifetime = 0.2
+        self.app.event_lifetime = 0.2
         response = self.stream(); self.event(response)
         started = time.monotonic()
         self.assertIsNone(self.event(response))
@@ -185,7 +146,7 @@ class WallTests(unittest.TestCase):
 
     def test_stream_without_photo_storage_is_unavailable(self):
         self.app.photos = None
-        self.assertEqual(self.get('wall/events')[0], 503)
+        self.assertEqual(self.get('api/photos/events')[0], 503)
 
 
 if __name__ == '__main__':

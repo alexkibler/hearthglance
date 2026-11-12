@@ -1,8 +1,8 @@
 # Hearthglance standalone design
 
-Hearthglance is a self-hosted household app. Sidekick manages the household from an iPhone. Wall Display makes the same data readable across a room. B/W brings the agenda and essential controls to KOReader. The existing Home Assistant card remains available during migration.
+Hearthglance is a self-hosted household app. One dashboard app serves both the iPhones and the wall screens: the phone layout manages the household, and the wide layout on the Pi and Fire makes the same data readable across a room, with the family photo slideshow built in. B/W brings the agenda and essential controls to KOReader. The existing Home Assistant card remains available during migration.
 
-The first release is a complete photo workflow. Select a few pictures in Sidekick, see them on Wall Display, and remove one from the slideshow. The later roadmap includes a better wall calendar, a Today board for routines, rewards, and grocery sections. Dinners stays dinner-only.
+The first release is a complete photo workflow. Select a few pictures on an iPhone, see them in the slideshow on the wall dashboard, and remove one from it. The later roadmap includes a better wall calendar, a Today board for routines, rewards, and grocery sections. Dinners stays dinner-only.
 
 ## Source and runtimes
 
@@ -10,13 +10,13 @@ The first release is a complete photo workflow. Select a few pictures in Sidekic
 |---|---|---|---|
 | Backend | `backend/web/` | Python, SQLite for new app data, filesystem for media, existing HA HTTP and WebSocket adapter as a starting point | Docker on the host |
 | Sidekick | `apps/sidekick/` | Existing JavaScript, HTML, CSS, Web Components, esbuild, manifest and service worker | Installed iPhone PWA |
-| Wall Display | `apps/wall/` | Server-rendered HTML and CSS, small vanilla JavaScript module, native EventSource | Chromium on the Pi and Cromite on the Fire |
+| Wall screens | `apps/sidekick/` (wide layout) | The same dashboard app. The slideshow (`slideshow-overlay.js`) plays over it and uses native EventSource while playing | Chromium on the Pi and Cromite on the Fire |
 | B/W | `apps/bw/`, `backend/kobo/` | KOReader Lua plugin and Python/Pillow renderer | Lua on Kobo, renderer in a LAN-only companion container |
 | Legacy HA card | Existing root source, HACS package and recipe integration | Existing Web Components and HA Python integration | Home Assistant during migration |
 
-The imported web app serves a responsive phone and desktop UI from one entry point. Sidekick inherits the existing URL, PWA identity, sign-in flow and offline behavior during the first release. Wall is a new entry point served by the same backend, under the existing web app base path to share its session cookie. Keep Wall routes outside the service worker's cached shell routes. B/W keeps its existing protocol, offline packs, clock, completion actions and power behavior.
+The imported web app serves a responsive phone and desktop UI from one entry point. Sidekick inherits the existing URL, PWA identity, sign-in flow and offline behavior during the first release. The wall screens open the same app and URL; there's no separate Wall entry point. (An earlier draft had one at `<base>/wall/`, which now redirects to the dashboard.) B/W keeps its existing protocol, offline packs, clock, completion actions and power behavior.
 
-The monorepo builds a backend image with the Sidekick bundle and Wall templates and assets. Node is a build dependency. A second image can run the existing Kobo renderer during migration. The legacy HA card keeps its own build and release workflow. Pin the deployment to a tested image version for rollback.
+The monorepo builds a backend image with the dashboard bundle. Node is a build dependency. A second image can run the existing Kobo renderer during migration. The legacy HA card keeps its own build and release workflow. Pin the deployment to a tested image version for rollback.
 
 ## Data ownership and Home Assistant
 
@@ -31,8 +31,8 @@ Support the HA embed through the ordinary webpage card on the same HTTPS origin 
 1. Add a Photos tile and a shared **Family Photos** album to Sidekick. Use the iPhone's multi-select photo picker, a thumbnail grid, full-screen preview, per-photo progress and retry, and removal. Keep upload and removal online. Exercise both the Pro and Pro Max layouts in the installed PWA.
 2. Authenticate uploads and reads with the existing Hearthglance session and enforce household access. Stage each file on the media mount. Validate actual format, size and pixel count before processing. Verify HEIC, JPEG and PNG in the real iPhone flow. Normalize orientation and strip location and other unnecessary metadata from published derivatives. Bound decode concurrency and memory. Publish metadata and completed derivatives together, and handle interrupted uploads and retries without exposing partial photos or creating duplicates.
 3. Save a display-sized image and a thumbnail per photo as the initial design default. Treat full-resolution archive retention as a separate product decision. Upload copies leave the iPhone library intact. This release uses the system picker and requires no Apple account connection or library sync on the host.
-4. Add **Play slideshow** on Wall. Use one shared album, display-appropriate image dimensions and a bounded preload of the next slide. Keep only a small number of decoded images in memory. Update the current album after an upload or removal. Add the idle timer and tap-to-return after manual playback works.
-5. Use native Server-Sent Events for small change notifications, followed by a fresh fragment or playlist request. Fetch current state on reconnect to catch events missed during an outage. Keep the last rendered view visible while disconnected. Confirm end-to-end delivery through the reverse proxy with response buffering disabled for the stream. Wall actions use ordinary authenticated HTTP.
+4. Build the slideshow into the dashboard: a **Slideshow** entry in the wide layout's menu and **Play slideshow** on the Photos page. It plays over the current page, and one tap returns to exactly that view. Use one shared album, display-appropriate image dimensions and a bounded preload of the next slide. Keep only a small number of decoded images in memory. Update the current album after an upload or removal. After manual playback works, add an idle start on wall-sized screens (never on phones or over an empty album).
+5. Use native Server-Sent Events for small change notifications, followed by a fresh fragment or playlist request. Fetch current state on reconnect to catch events missed during an outage. Keep the last rendered view visible while disconnected. Confirm end-to-end delivery through the reverse proxy with response buffering disabled for the stream. All other actions use ordinary authenticated HTTP. The stream is open only while the slideshow plays.
 
 Postpone video, guest uploads, richer album management, offline upload queues and native iOS work. If the PWA hits a concrete platform limitation, document it with a reproducible test on an iPhone before revisiting native distribution.
 

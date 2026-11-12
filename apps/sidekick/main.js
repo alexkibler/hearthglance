@@ -3,18 +3,21 @@ import {Bridge,snapshotRange} from './bridge.js';
 import {PWA} from './pwa.js';
 import {OfflineStore} from './offline-store.js';
 import {PhotoLibrary} from './ui/photos.js';
+import {SlideshowOverlay} from './slideshow-overlay.js';
 
 const root=document.querySelector('#app'),login=document.querySelector('#login'),status=document.querySelector('#status');
 const offline=new OfflineStore();
 const pwa=new PWA({changed:syncPwaControls,expired:()=>forgetOffline().then(showLogin)});
 let bridge,card,session,poll,accountEpoch=0,offlineSaved=false,offlineSaveFailed=false,dismissedWorker,installFocus,savingPreviews=false;
 const embedded=window.self!==window.top;
+// One slideshow overlay per page; each signed-in dashboard attaches its photo library to it.
+const slideshow=new SlideshowOverlay({root:document.querySelector('#slideshow'),search:location.search,base:location.href});
 document.documentElement.classList.toggle('embedded',embedded);
 async function save(snapshot){
   offlineSaved=await offline.write({config:session.config,snapshot});offlineSaveFailed=!offlineSaved;syncPwaControls();
 }
 async function forgetOffline(){accountEpoch++;offlineSaved=false;await offline.clear();await pwa.clearPrivate();}
-function showLogin(){accountEpoch++;root.replaceChildren();login.hidden=false;status.hidden=true;clearTimeout(poll);if(card)card._stop();syncPwaControls();}
+function showLogin(){accountEpoch++;slideshow.detach();root.replaceChildren();login.hidden=false;status.hidden=true;clearTimeout(poll);if(card)card._stop();syncPwaControls();}
 async function request(path,options={}) {
   const response=await fetch('./'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
   const data=await response.json();
@@ -47,7 +50,9 @@ function mount(config,snapshot,online=true) {
   if(session.photos){
     card._pages=[...card._pages.filter(p=>p!=='settings'),'photos','settings'];
     card._photoLibrary=new PhotoLibrary({csrf:session.csrf,unauthorized:()=>{if(active())forgetOffline().then(showLogin);}});
-  }
+    // Idle start only on wall-sized layouts; phones open the slideshow from Photos.
+    slideshow.attach({library:card._photoLibrary,settings:session.slideshow||{},kiosk:()=>!card._mobile});
+  }else slideshow.detach();
   const page=new URLSearchParams(location.search).get('page');
   if(card._pages.includes(page))card._page=page;
   card._view=card._page==='calendar'?'month':'week';
@@ -58,6 +63,7 @@ function mount(config,snapshot,online=true) {
   const originalClick=card._click;
   card._click=async function(event){
     const action=event.target.closest('[data-action]')?.dataset.action;
+    if(action==='slideshow'){slideshow.start();return;}
     if(action==='recipe-more'){this._recipeLimit=(this._recipeLimit||24)+24;this._renderRecipeResults();return;}
     if(action==='pwa-install'){await install();return;}
     if(action==='pwa-update'){if(pwa.waiting)pwa.update();else this._toast(await pwa.check().catch(()=>'Could not check for updates. Try again when connected.'));return;}
@@ -91,9 +97,12 @@ function mount(config,snapshot,online=true) {
   card._renderMain=function(){this.shadowRoot.querySelector('.app')?.setAttribute('data-page',this._page);return originalRender.call(this);};
   // No HA logo navigation or requirement to load its frontend.
   const originalShell=card._renderShell;
-  card._renderShell=function(){originalShell.call(this);for(const link of this.shadowRoot.querySelectorAll('a.ha-home')){link.href='./';link.title='Hearthglance';link.setAttribute('aria-label','Hearthglance home');}};
+  card._renderShell=function(){originalShell.call(this);for(const link of this.shadowRoot.querySelectorAll('a.ha-home')){link.href='./';link.title='Hearthglance';link.setAttribute('aria-label','Hearthglance home');}
+    // The slideshow is an action, not a page: it plays over the current view and a tap returns to it.
+    if(this._photoLibrary)this.shadowRoot.querySelector('.rail .nav[data-page="photos"]')?.insertAdjacentHTML('afterend','<button type="button" class="nav" data-action="slideshow" aria-label="Slideshow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4ZM10 9v6l5-3Z"/></svg><span>Slideshow</span></button>');};
   card._renderShell();root.replaceChildren(card);login.hidden=true;
   setHass();freshness(online,snapshot);
+  slideshow.ready();
   if(online)save(snapshot);
   function schedule(){clearTimeout(poll);poll=setTimeout(async()=>{if(!document.hidden){try{await bridge.refresh();}catch(error){if(error.status===401)return;}}schedule();},60000);}
   schedule();

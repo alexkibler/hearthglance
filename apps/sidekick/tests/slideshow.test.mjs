@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Slideshow} from '../static/slideshow.js';
+import {Slideshow} from '../ui/slideshow.js';
 
 const photo=id=>({id,display:`./api/photos/${id}/display`});
 const flush=async()=>{for(let i=0;i<10;i++)await Promise.resolve();};

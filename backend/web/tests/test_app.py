@@ -16,7 +16,6 @@ CONFIG={'household':'Test family','people':[{'id':'family','name':'Family','todo
  'calendars':[{'entity':'calendar.home','kind':'meals','person':'family'}],
  'lists':[],'recipes':'sensor.recipes','weather':'weather.home'}
 IMAGE='a'*64
-WALL=Path(app.__file__).resolve().parents[2]/'apps'/'wall'/'static'
 class FakeHA:
     def __init__(self,*args): self.calls=[]
     def ws(self,command):
@@ -72,7 +71,7 @@ class DataTests(unittest.TestCase):
 class HTTPTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
-        self.app=app.Application(CONFIG,'http://ha.test','https://ha.test','https://app.test/hearthglance/',Path(self.temp.name)/'sessions.json',Path(app.__file__).parent/'static',WALL)
+        self.app=app.Application(CONFIG,'http://ha.test','https://ha.test','https://app.test/hearthglance/',Path(self.temp.name)/'sessions.json',Path(app.__file__).parent/'static')
         self.sid=self.app.sessions.create({'access_token':'private-token','refresh_token':'private-refresh','expires_in':3600})
         self.key=self.app.sessions.key(self.sid);self.csrf=self.app.sessions.records[self.key]['csrf']
         self.server=app.serve(self.app,'127.0.0.1',0)
@@ -126,16 +125,17 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(status,303);self.assertIn('Secure',headers['Set-Cookie'])
             status,_,_=self.request('api/logout','POST',{})
             self.assertEqual(status,200);self.assertEqual(self.request('api/session')[0],401)
-    def test_wall_entry_point_is_separate_public_shell_with_same_headers(self):
+    def test_old_wall_address_opens_the_dashboard_and_keeps_kiosk_options(self):
         status,headers,_=self.request('wall',auth=False)
-        self.assertEqual(status,303);self.assertEqual(headers['Location'],'https://app.test/hearthglance/wall/')
-        status,headers,body=self.request('wall/',auth=False)
-        self.assertEqual(status,200);self.assertIn(b'wall.js',body);self.assertEqual(headers['Cache-Control'],'no-store')
-        self.assertIn("frame-ancestors 'self';",headers['Content-Security-Policy'])
-        for asset,kind in (('wall/wall.js','text/javascript'),('wall/wall.css','text/css')):
-            status,headers,_=self.request(asset,auth=False);self.assertEqual(status,200);self.assertEqual(headers['Content-Type'],kind)
-        for path in ('wall/../app.py','wall/index.htm','wall/sw.js','wall/config.json'):
+        self.assertEqual((status,headers['Location']),(303,'https://app.test/hearthglance/'))
+        status,headers,_=self.request('wall/?idle=10&debug=1',auth=False)
+        self.assertEqual((status,headers['Location']),(303,'https://app.test/hearthglance/?idle=10&debug=1'))
+        for path in ('wall/wall.js','wall/index.html','wall/events'):
             self.assertEqual(self.request(path,auth=False)[0],404)
+    def test_session_carries_slideshow_settings(self):
+        self.app.slideshow_idle=10
+        body=json.loads(self.request('api/session')[2])
+        self.assertEqual(body['slideshow'],{'interval':12,'idle':10})
 
 
 class FramingTests(unittest.TestCase):
@@ -149,7 +149,7 @@ class FramingTests(unittest.TestCase):
             with self.assertRaises(ValueError,msg=bad):app.frame_ancestors(bad)
     def test_configured_origin_reaches_every_response(self):
         with tempfile.TemporaryDirectory() as folder:
-            application=app.Application(CONFIG,'http://ha.test','https://ha.test','https://app.test/hg/',Path(folder)/'s.json',Path(folder),WALL,'https://ha.example.test')
+            application=app.Application(CONFIG,'http://ha.test','https://ha.test','https://app.test/hg/',Path(folder)/'s.json',Path(folder),'https://ha.example.test')
             self.assertIn("frame-ancestors 'self' https://ha.example.test;",application.csp)
 
 
@@ -161,10 +161,10 @@ class RuntimeTests(unittest.TestCase):
         return dict(self.ENV,HG_CONFIG=str(config),HG_SESSIONS=str(Path(folder)/'data'/'sessions.json'),**extra)
     def test_valid_mounts_build_the_application(self):
         with tempfile.TemporaryDirectory() as folder:
-            application=app.runtime(self.env(folder,HG_WALL=str(WALL)),Path(folder))
-            self.assertEqual(application.prefix,'/hearthglance');self.assertEqual(application.wall,WALL)
-            self.assertEqual(application.wall_idle,0)
-            self.assertEqual(app.runtime(self.env(folder,HG_WALL_IDLE_MINUTES='15'),Path(folder)).wall_idle,15)
+            application=app.runtime(self.env(folder),Path(folder))
+            self.assertEqual(application.prefix,'/hearthglance');self.assertEqual(application.slideshow_idle,0)
+            self.assertEqual(app.runtime(self.env(folder,HG_SLIDESHOW_IDLE_MINUTES='15'),Path(folder)).slideshow_idle,15)
+            self.assertEqual(app.runtime(self.env(folder,HG_WALL_IDLE_MINUTES='7'),Path(folder)).slideshow_idle,7)   # earlier name
     def test_missing_or_unusable_mounts_fail_with_a_clear_message(self):
         with tempfile.TemporaryDirectory() as folder:
             env=self.env(folder)
@@ -172,7 +172,7 @@ class RuntimeTests(unittest.TestCase):
                 'data directory':dict(env,HG_SESSIONS=str(Path(folder)/'missing'/'sessions.json')),
                 'set HA_URL':{k:v for k,v in env.items() if k!='HA_URL'},
                 'https:// origins':dict(env,HG_FRAME_ANCESTORS='*'),
-                'HG_WALL_IDLE_MINUTES':dict(env,HG_WALL_IDLE_MINUTES='soon')}
+                'HG_SLIDESHOW_IDLE_MINUTES':dict(env,HG_SLIDESHOW_IDLE_MINUTES='soon')}
             for message,value in cases.items():
                 with self.assertRaises(SystemExit) as raised:app.runtime(value,Path(folder))
                 self.assertIn(message,str(raised.exception))

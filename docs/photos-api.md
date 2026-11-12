@@ -1,6 +1,6 @@
 # Photos API
 
-Contract for Sidekick Photos (#7) and Wall (#8). All paths are relative to the app base path (for example `/hearthglance/`). Every request needs the signed-in `hg_session` cookie. Writes also need the `X-HG-CSRF` token from `GET api/session`, a same-origin `Origin` header (or none), and no `Sec-Fetch-Site: cross-site`.
+Contract for the Photos page (#7) and the dashboard slideshow (#8). All paths are relative to the app base path (for example `/hearthglance/`). Every request needs the signed-in `hg_session` cookie. Writes also need the `X-HG-CSRF` token from `GET api/session`, a same-origin `Origin` header (or none), and no `Sec-Fetch-Site: cross-site`.
 
 There is one shared album in this release: `{"id": "family", "name": "Family Photos"}`.
 
@@ -40,7 +40,7 @@ There is one shared album in this release: `{"id": "family", "name": "Family Pho
 - A photo appears in listings only after both derivatives are stored and its catalog row is committed. Interrupted or failed uploads never appear and leave no files behind.
 - A replay returns the stored photo only while the media drive is available; otherwise it gets `503`.
 
-Photo responses are `no-store`, so a removed photo, or one requested after sign-out, is never served from the browser cache. Wall preloads the next slide itself to keep transitions smooth.
+Photo responses are `no-store`, so a removed photo, or one requested after sign-out, is never served from the browser cache. The slideshow preloads the next slide itself to keep transitions smooth.
 
 ### Errors
 
@@ -61,4 +61,10 @@ Errors return JSON `{"error": "<message for people>"}`.
 
 ## Change notifications
 
-Uploads and removals bump an in-process change counter (`Changes` in `backend/web/photos.py`). Wall's event stream (#8) announces the new `version`, and clients then call `GET api/photos` again.
+Uploads and removals bump an in-process change counter (`Changes` in `backend/web/photos.py`).
+
+`GET api/photos/events` is a Server-Sent Events stream for the slideshow, which opens it only while playing:
+
+- Each event is `event: photos` with `data: {"version": n}`. On every (re)connect the current version is sent first, so a client catches anything it missed. Clients call `GET api/photos` again when the version differs from the last one applied.
+- `retry: 5000`, keep-alive comments every 25 s, `X-Accel-Buffering: no`.
+- At most 8 concurrent streams (`503` beyond that). Each is recycled after 15 minutes and closes when its session is revoked; `401` without a session.

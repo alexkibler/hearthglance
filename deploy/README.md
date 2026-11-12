@@ -1,6 +1,6 @@
 # Deployment
 
-The backend image serves Sidekick, Wall and the API from one process. Build it from the repository root:
+The backend image serves the dashboard app (phones and wall screens) and the API from one process. Build it from the repository root:
 
 ```sh
 docker build -t hearthglance:dev .
@@ -32,7 +32,7 @@ Startup exits with a one-line error when `config.json` is missing or unreadable,
 | `HG_FRAME_ANCESTORS` | empty | Extra `https://` origins allowed to frame the app. Same origin is always allowed. |
 | `HG_MEDIA` | `/media` | Photo media root. Unset it to disable photos. |
 | `HG_PHOTO_DECODERS` | `1` | Concurrent photo decode workers |
-| `HG_WALL_IDLE_MINUTES` | `0` | Minutes of inactivity before Wall starts the slideshow; `0` is off |
+| `HG_SLIDESHOW_IDLE_MINUTES` | `0` | Minutes of inactivity before a wall-sized screen starts the slideshow; `0` is off. The earlier name `HG_WALL_IDLE_MINUTES` is still accepted |
 
 ### Compatibility with the pre-monorepo layout
 
@@ -80,12 +80,12 @@ client_max_body_size 50m;
 proxy_request_buffering off;
 ```
 
-### Wall event stream
+### Slideshow event stream
 
-`<base>/wall/events` is a Server-Sent Events stream. The backend sends `X-Accel-Buffering: no` and a keep-alive comment every 25 seconds. It also recycles each stream after 15 minutes, and the browser reconnects and fetches the current album. For a dedicated proxy location, use:
+`<base>/api/photos/events` is a Server-Sent Events stream, open only while a slideshow plays. The backend sends `X-Accel-Buffering: no` and a keep-alive comment every 25 seconds. It also recycles each stream after 15 minutes, and the browser reconnects and fetches the current album. For a dedicated proxy location, use:
 
 ```nginx
-location /hearthglance/wall/events {
+location /hearthglance/api/photos/events {
     proxy_pass http://127.0.0.1:8135;
     proxy_buffering off;
     proxy_cache off;
@@ -99,11 +99,14 @@ Each open stream holds one server thread, and at most 8 are accepted at a time. 
 
 When Home Assistant proxies the app on its own origin, the default `frame-ancestors 'self'` already allows the webpage card. Add `HG_FRAME_ANCESTORS` only when HA is served from a different HTTPS origin. Wildcards, paths and plain HTTP are rejected.
 
-## Wall
+## Wall screens and the slideshow
 
-Wall is served at `<base>/wall/`. That path stays outside the Sidekick service worker's shell and photo caches, so kiosks always load it from the network. Sign in on each kiosk once at `<base>/wall/`; the sign-in link returns to Wall. Append `?interval=<seconds>` (3–300, default 12) to change the slide interval for one kiosk.
+The Pi and Fire open the same dashboard as the phones, at `<base>/`, and sign in once. The slideshow is part of it:
 
-Idle slideshow is off by default. Set `HG_WALL_IDLE_MINUTES` (1–240) to start the slideshow after that many quiet minutes on every kiosk, or override a single kiosk with `?idle=<minutes>` (`?idle=0` turns it off there). Any tap returns to the previous view and restarts the countdown.
+- **Start:** the **Slideshow** entry in the left menu, or **Play slideshow** on the Photos page. It plays over whatever page is open, and one tap returns to exactly that view.
+- **Idle start:** off by default. Set `HG_SLIDESHOW_IDLE_MINUTES` (1–240) to start it after that many quiet minutes on wall-sized screens. Override a single screen with `?idle=<minutes>` (`?idle=0` turns it off there). Phones never start it on their own, and an empty album keeps the dashboard up.
+- **Per-screen options:** `?interval=<seconds>` (3–300, default 12) sets the slide interval, `?slideshow=1` starts playing as soon as the dashboard loads, and `?debug=1` shows the viewport, pixel ratio and stream state.
+- **Old address:** `<base>/wall/` redirects to the dashboard and keeps these options.
 
 ## Local staging
 

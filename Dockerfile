@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && chown 10001:10001 /data /media
 COPY backend/web/app.py backend/web/photos.py ./
 COPY --from=sidekick /build/static ./static
-COPY apps/wall/static ./wall
 # Non-root by default; deployments may override with `user:` to match host ownership of /data and /media.
 USER 10001:10001
 EXPOSE 8080

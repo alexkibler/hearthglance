@@ -115,7 +115,8 @@ export function photosHTML(library,options={}){
 
 export function photoParts(library,{online=true,preview=null,confirm=false}={}){
  const uploads=library.uploads.length?`<ul class="photo-uploads" aria-label="Uploads">${library.uploads.map(u=>`<li class="photo-upload ${u.status}" data-upload="${u.local}"><div class="photo-upload-copy"><strong>${esc(u.name)}</strong><span class="photo-upload-status" role="status">${esc(statusText(u))}</span></div>${['uploading','processing','queued'].includes(u.status)?`<progress max="100" value="${u.status==='processing'?100:percent(u.progress)}" aria-label="${esc(u.name)} upload progress"></progress>`:''}${u.status==='failed'?`<button type="button" class="btn small" data-photo-action="retry" data-local="${u.local}">Retry</button>`:''}${['failed','rejected'].includes(u.status)?`<button type="button" class="text-link" data-photo-action="dismiss" data-local="${u.local}" aria-label="Dismiss ${esc(u.name)}">Dismiss</button>`:''}</li>`).join('')}</ul>`:'';
- const picker=online?`<label class="btn primary photo-pick">Add photos<input type="file" class="photo-input" accept="${ACCEPT}" multiple></label>`:`<p class="section-note photo-offline" role="status">You are offline. Connect to add or remove photos.</p>`;
+ const play=library.photos.length?'<button type="button" class="btn" data-action="slideshow">Play slideshow</button>':'';
+ const picker=online?`<label class="btn primary photo-pick">Add photos<input type="file" class="photo-input" accept="${ACCEPT}" multiple></label>${play}`:`<p class="section-note photo-offline" role="status">You are offline. Connect to add or remove photos.</p>`;
  const body=library.status==='loading'&&!library.photos.length?'<p class="section-note" role="status">Loading photos…</p>':
   library.status==='offline'&&!library.photos.length?'<p class="section-note" role="status">Connect to see Family Photos.</p>':
   library.status==='error'&&!library.photos.length?`<div class="error-banner" role="alert"><span>${esc(library.error)}</span><button type="button" class="text-link" data-photo-action="reload">Retry</button></div>`:
@@ -141,13 +142,15 @@ export class PhotosView extends (globalThis.HTMLElement||class{}) {
   this.unsubscribe?.();this.unsubscribe=this.library.subscribe(()=>this.schedule());
   addEventListener('online',this.online);addEventListener('offline',this.online);
   this.render();
+  if(this.needsLoad){this.needsLoad=false;this.library.load();}
  }
  disconnectedCallback(){
   this.unsubscribe?.();this.unsubscribe=null;cancelAnimationFrame(this.frame);this.frame=0;
   document.documentElement.classList.remove('photo-viewer-open');
   removeEventListener('online',this.online);removeEventListener('offline',this.online);
  }
- reset(){this.preview=null;this.confirm=false;if(this.library){this.render();this.library.load();}}
+ // The card's first render can happen before it's attached to the page; then the load waits for connectedCallback.
+ reset(){this.preview=null;this.confirm=false;if(this.library&&this.isConnected){this.render();this.library.load();}else this.needsLoad=true;}
  schedule(){if(!this.frame)this.frame=requestAnimationFrame(()=>{this.frame=0;this.render();});}
  render(){
   if(this.preview&&!this.library.photos.some(p=>p.id===this.preview)){this.preview=null;this.confirm=false;}

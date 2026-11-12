@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {IdleTimer,idleMinutes,onIdle,onAlbum} from '../static/idle.js';
+import {IdleTimer,idleMinutes,onIdle,onAlbum} from '../ui/idle.js';
 
 function timers(){const set=new Map();let n=0;return {set,api:{set:(f,ms)=>{set.set(++n,{f,ms});return n;},clear:id=>set.delete(id)},
  fire(){const [[id,t]]=set;set.delete(id);t.f();}};}
