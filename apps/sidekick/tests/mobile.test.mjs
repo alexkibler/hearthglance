@@ -18,3 +18,22 @@ test('mobile schedule navigation advances by the selected day count',()=>{
  methods._navigatePeriod.call(ctx,-1);assert.equal(ctx._date.getDate(),20);
  ctx._mobile=false;methods._navigatePeriod.call(ctx,1);assert.equal(ctx._date.getDate(),27);
 });
+test('coming up lists an event that started yesterday under Today, groups by day and skips finished ones',()=>{
+ const day=n=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+n);return d;};
+ const at=(n,h)=>{const d=day(n);d.setHours(h);return d;};
+ const events=[
+  {title:'Recovery',start:day(-1),end:day(2),allDay:true},
+  {title:'Done',start:day(-2),end:day(-1),allDay:true},
+  {title:'Dentist',start:at(1,9),end:at(1,10),allDay:false},
+  {title:'Soup',start:day(0),end:day(1),allDay:true},
+  {title:'Trip',start:day(3),end:day(4),allDay:true},
+ ];
+ const m=mobileMethods({format:(d,o)=>d.toLocaleDateString('en-US',o)});
+ const ctx={_visibleEvents:()=>events,_phoneEvent:e=>`[${e.title}]`};
+ const items=m._upcoming.call(ctx);
+ assert.deepEqual(items.map(i=>i.event.title),['Recovery','Soup','Dentist','Trip']);
+ assert.equal(items[0].day.getTime(),day(0).getTime());
+ const html=m._upcomingGroups.call(ctx,items);
+ assert.match(html,/^<div class="phone-upcoming"><span>Today<\/span>\[Recovery\]\[Soup\]<\/div><div class="phone-upcoming"><span>Tomorrow<\/span>\[Dentist\]/);
+ assert.ok(!html.includes('Done'));
+});

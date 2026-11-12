@@ -217,7 +217,11 @@ class HearthglanceCard extends HTMLElement {
   if(this._page==='photos')return '';
   const primary=this._page==='recipes'?['Add recipe','add-recipe']:this._page==='tasks'?['Add chore','add-task']:this._page==='list'?['Add item','add-list-item']:this._page==='meals'?['Plan dinner','add-meal']:this._mobile&&this._page==='home'?['Add','phone-add']:['Add event','add-event'];
   const canAdd=!this._mobile||this._page!=='list'||this._mobileListOpen;
-  return `<div class="head-actions page-actions" role="group" aria-label="Page actions">${button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"')}${canAdd?button(icon('plus')+primary[0],primary[1],'btn primary'):''}${this._native&&this._mobile?button(icon('settings'),'settings','icon-btn','aria-label="Card options"'):''}</div>`;
+  // The standalone phone header has its own refresh (next to "Updated …"), and the phone calendar toolbar has room
+  // only for an icon-sized Add.
+  const refresh=this._standalone&&this._mobile?'':button(icon('refresh'),'refresh','icon-btn','aria-label="Refresh dashboard"');
+  const add=this._mobile&&this._page==='calendar'?button(icon('plus'),primary[1],'btn primary phone-tool phone-add-tool',`aria-label="${primary[0]}"`):button(icon('plus')+primary[0],primary[1],'btn primary');
+  return `<div class="head-actions page-actions" role="group" aria-label="Page actions">${refresh}${canAdd?add:''}${this._native&&this._mobile?button(icon('settings'),'settings','icon-btn','aria-label="Card options"'):''}</div>`;
  }
  _profiles(){return `<div class="profiles" aria-label="Family filters">${this._config.people.map(p=>button(`<span class="avatar">${esc(p.initial)}</span>${esc(p.name)}`,'filter',`profile ${this._hidden.has(p.id)?'off':''}`,`data-person="${p.id}" style="${personStyle(p)}" aria-pressed="${!this._hidden.has(p.id)}"`)).join('')}${button('Other calendars','other-calendars','text-link')}</div>`;}
  _calendarPage(){

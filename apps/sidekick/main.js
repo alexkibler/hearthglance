@@ -85,7 +85,15 @@ function mount(config,snapshot,online=true) {
     }
     if(action==='refresh'){
       if(!session.csrf){location.reload();return;}
-      try{await bridge.refresh(true);}catch(error){this._toast(error.message);}return;
+      // Spin while Home Assistant is asked again, then say what happened: an unchanged dashboard otherwise looks
+      // like the tap did nothing.
+      const controls=[...this.shadowRoot.querySelectorAll('[data-action="refresh"]')];
+      if(controls.some(c=>c.classList.contains('refreshing')))return;
+      for(const c of controls)c.classList.add('refreshing');
+      try{await bridge.refresh(true);this._toast(bridge.connected?'Up to date':'Couldn’t reach home. Showing saved data.');}
+      catch(error){this._toast(error.message);}
+      finally{for(const c of this.shadowRoot.querySelectorAll('[data-action="refresh"]'))c.classList.remove('refreshing');}
+      return;
     }
     return originalClick.call(this,event);
   };
