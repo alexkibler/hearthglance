@@ -270,6 +270,9 @@ class Application:
         self.data, self.static = Data(config), Path(static)
         self.wall = Path(wall) if wall else Path(static).parent/'wall'
         self.photos = photos
+        # Each Wall stream holds one server thread; bound them and recycle long-lived ones.
+        self.wall_streams = threading.BoundedSemaphore(8)
+        self.wall_heartbeat, self.wall_lifetime, self.wall_interval = 25, 900, 12
         self.csp = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             f"connect-src 'self'; frame-ancestors {frame_ancestors(framing)}; object-src 'none'; base-uri 'self'")
 
@@ -310,6 +313,56 @@ class Handler(BaseHTTPRequestHandler):
         key = self.app.sessions.key(self.cookie('hg_session'))
         return key, HomeAssistant(self.app.ha_url, lambda:self.app.sessions.access(key))
 
+    def signed_in(self):
+        try: self.app.sessions.key(self.cookie('hg_session')); return True
+        except LoginRequired: return False
+
+    def wall_page(self):
+        """Server-rendered Wall shell. The small module script adds the clock, live updates and the slideshow."""
+        if not self.signed_in():
+            actions = '<a class="play" href="../auth/login?next=wall" target="_top">Sign in with Home Assistant</a>'
+            state = 'signed-out'
+        elif not self.app.photos or not self.app.photos.available():
+            actions = '<p class="notice" role="status">Photos are unavailable. Check the photo drive.</p>'
+            state = 'unavailable'
+        else:
+            count = len(self.app.photos.list()['photos'])
+            label = 'No photos yet' if not count else f'{count} photo' + ('' if count == 1 else 's')
+            actions = f'<button id="play" class="play" type="button">Play slideshow</button><p id="count" class="count">{label}</p>'
+            state = 'ready'
+        template = (self.app.wall/'index.html').read_text()
+        return template.replace('{{state}}', state).replace('{{actions}}', actions).replace('{{interval}}', str(self.app.wall_interval))
+
+    def wall_events(self, changes):
+        """Server-Sent Events: small change notices only. Clients fetch api/photos after each one."""
+        streams = self.app.wall_streams
+        if not streams.acquire(blocking=False):
+            self.send_json({'error':'Too many Wall connections.'},503);return
+        key = self.app.sessions.key(self.cookie('hg_session'))
+        try:
+            self.close_connection = True
+            self.send_response(200)
+            for name, value in (('Content-Type','text/event-stream'),('Cache-Control','no-store'),
+                    ('X-Accel-Buffering','no'),('X-Content-Type-Options','nosniff'),('Connection','close')):
+                self.send_header(name, value)
+            self.end_headers()
+            version = changes.version
+            # Every (re)connect starts with the current version so a client catches anything it missed.
+            self.wfile.write(f'retry: 5000\nevent: photos\ndata: {{"version":{version}}}\n\n'.encode());self.wfile.flush()
+            deadline = time.monotonic() + self.app.wall_lifetime
+            while time.monotonic() < deadline:
+                latest = changes.wait(version, self.app.wall_heartbeat)
+                with self.app.sessions.lock:
+                    if key not in self.app.sessions.records: return     # signed out elsewhere
+                if latest != version:
+                    version = latest
+                    self.wfile.write(f'event: photos\ndata: {{"version":{version}}}\n\n'.encode())
+                else:
+                    self.wfile.write(b': keep-alive\n\n')
+                self.wfile.flush()
+        except OSError: pass
+        finally: streams.release()
+
     def photo_store(self):
         if not self.app.photos: raise PhotoError(503, 'Photos are not configured on this server.')
         return self.app.photos
@@ -338,7 +391,8 @@ class Handler(BaseHTTPRequestHandler):
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
             with self.app.sessions.lock:
                 self.app.sessions.pending = {k:v for k,v in self.app.sessions.pending.items() if v[0]>time.time()}
-                self.app.sessions.pending[state] = (time.time()+600, verifier)
+                # Only an allowlisted destination is remembered, so sign-in can never redirect off the app.
+                self.app.sessions.pending[state] = (time.time()+600, verifier, 'wall/' if query.get('next') == 'wall' else '')
             url = self.app.ha_public+'/auth/authorize?'+urllib.parse.urlencode({
                 'client_id':self.app.public,'redirect_uri':self.app.public+'auth/callback',
                 'state':state,'code_challenge':challenge,'code_challenge_method':'S256'})
@@ -351,7 +405,7 @@ class Handler(BaseHTTPRequestHandler):
             tokens = self.app.sessions.token_request({'grant_type':'authorization_code',
                 'code':query.get('code',''),'code_verifier':pending[1]})
             sid = self.app.sessions.create(tokens)
-            self.redirect(self.app.public,self.set_cookie('hg_session',sid,30*86400));return
+            self.redirect(self.app.public+(pending[2] if len(pending) > 2 else ''),self.set_cookie('hg_session',sid,30*86400));return
         if path.startswith('/api/'):
             key, ha = self.identity()
             if path == '/api/session':
@@ -382,10 +436,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404);return
         if path == '/wall':
             self.redirect(self.app.public+'wall/');return
+        if path == '/wall/events':
+            self.identity()
+            self.wall_events(self.photo_store().changes);return
+        if path == '/wall/':
+            body = self.wall_page().encode()
+            self.respond_headers(200,'text/html; charset=utf-8',len(body));self.wfile.write(body);return
         if path.startswith('/wall/'):
             # Wall is a separate entry point outside the Sidekick service-worker shell.
-            asset = path[len('/wall/'):] or 'index.html'
-            if asset not in {'index.html','wall.css','wall.js'}: self.send_error(404);return
+            asset = path[len('/wall/'):]
+            if asset not in {'wall.css','wall.js','slideshow.js'}: self.send_error(404);return
             body = (self.app.wall/asset).read_bytes()
             self.respond_headers(200,mimetypes.guess_type(asset)[0] or 'application/octet-stream',len(body))
             self.wfile.write(body);return

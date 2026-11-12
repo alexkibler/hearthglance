@@ -1,0 +1,155 @@
+"""Wall page, sign-in return and live event stream tests (synthetic data only)."""
+import http.client
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
+
+sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
+import app
+from photos import MARKER, Photos
+from test_photos import image_bytes
+
+CONFIG = {'household': 'Test', 'people': [], 'calendars': [], 'lists': []}
+WALL = Path(app.__file__).resolve().parents[2]/'apps'/'wall'/'static'
+
+
+class WallTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        base = Path(self.temp.name)
+        (base/'media').mkdir(); (base/'media'/MARKER).write_text('x')
+        self.store = Photos(base/'media', base/'photos.sqlite3', isolate=False)
+        self.app = app.Application(CONFIG, 'http://ha.test', 'https://ha.test', 'https://app.test/hearthglance/',
+            base/'sessions.json', base, WALL, photos=self.store)
+        self.app.wall_heartbeat = 0.05
+        self.sid = self.app.sessions.create({'access_token': 't', 'refresh_token': 'r', 'expires_in': 3600})
+        self.server = app.serve(self.app, '127.0.0.1', 0)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.open = []
+
+    def tearDown(self):
+        for conn in self.open: conn.close()
+        self.server.shutdown(); self.server.server_close(); self.temp.cleanup()
+
+    def connect(self):
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=5)
+        self.open.append(conn); return conn
+
+    def get(self, path, auth=True):
+        conn = self.connect()
+        conn.request('GET', '/hearthglance/' + path, headers={'Cookie': 'hg_session=' + self.sid} if auth else {})
+        response = conn.getresponse(); body = response.read()
+        return response.status, dict(response.getheaders()), body.decode(errors='replace')
+
+    def stream(self):
+        conn = self.connect()
+        conn.request('GET', '/hearthglance/wall/events', headers={'Cookie': 'hg_session=' + self.sid})
+        response = conn.getresponse(); response.conn = conn
+        return response
+
+    @staticmethod
+    def event(response):
+        """Read one SSE block, skipping keep-alive comments."""
+        while True:
+            lines = []
+            while True:
+                line = response.fp.readline().decode()
+                if line in ('\n', ''): break
+                lines.append(line.rstrip('\n'))
+            if not lines and line == '': return None
+            if lines and all(l.startswith(':') for l in lines): continue
+            fields = dict(l.split(': ', 1) for l in lines if not l.startswith(':'))
+            return fields
+
+    def test_page_renders_signed_out_ready_and_unavailable_states(self):
+        status, headers, body = self.get('wall/', auth=False)
+        self.assertEqual(status, 200); self.assertIn('data-state="signed-out"', body)
+        self.assertIn('href="../auth/login?next=wall"', body); self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertNotIn('{{', body)
+        status, _, body = self.get('wall/')
+        self.assertIn('data-state="ready"', body); self.assertIn('No photos yet', body); self.assertIn('id="play"', body)
+        self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0001')
+        self.assertIn('>1 photo<', self.get('wall/')[2])
+        (Path(self.temp.name)/'media'/MARKER).unlink()
+        self.assertIn('data-state="unavailable"', self.get('wall/')[2])
+
+    def test_assets_are_served_and_the_template_is_not(self):
+        for asset, kind in (('wall.js', 'text/javascript'), ('slideshow.js', 'text/javascript'), ('wall.css', 'text/css')):
+            status, headers, _ = self.get('wall/' + asset, auth=False)
+            self.assertEqual((status, headers['Content-Type']), (200, kind))
+        self.assertEqual(self.get('wall/index.html', auth=False)[0], 404)
+
+    def test_sign_in_returns_to_wall_only_for_the_allowlisted_target(self):
+        def callback(next_value):
+            status, headers, _ = self.get('auth/login' + next_value, auth=False)
+            state = parse_qs(urlsplit(headers['Location']).query)['state'][0]
+            conn = self.connect()
+            conn.request('GET', f'/hearthglance/auth/callback?code=c&state={state}', headers={'Cookie': 'hg_oauth=' + state})
+            response = conn.getresponse(); response.read()
+            return response.getheader('Location')
+        with patch.object(self.app.sessions, 'token_request', return_value={'access_token': 'a', 'refresh_token': 'r', 'expires_in': 60}):
+            self.assertEqual(callback('?next=wall'), 'https://app.test/hearthglance/wall/')
+            self.assertEqual(callback(''), 'https://app.test/hearthglance/')
+            self.assertEqual(callback('?next=https://evil.test/'), 'https://app.test/hearthglance/')
+
+    def test_stream_announces_current_version_then_changes_with_keep_alives(self):
+        response = self.stream()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader('Content-Type'), 'text/event-stream')
+        self.assertEqual(response.getheader('Cache-Control'), 'no-store')
+        self.assertEqual(response.getheader('X-Accel-Buffering'), 'no')
+        first = self.event(response)
+        self.assertEqual((first['event'], json.loads(first['data'])), ('photos', {'version': 0}))
+        self.assertEqual(first['retry'], '5000')
+        time.sleep(0.15)                                        # keep-alive comments flow while idle
+        photo, _ = self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0002')
+        self.assertEqual(json.loads(self.event(response)['data']), {'version': 1})
+        self.store.remove(photo['id'])
+        self.assertEqual(json.loads(self.event(response)['data']), {'version': 2})
+
+    def test_reconnect_receives_the_version_it_missed(self):
+        first = self.stream(); self.event(first); first.close()
+        self.store.upload(io.BytesIO(image_bytes()), len(image_bytes()), 'wall-test-key-0003')
+        again = self.stream()
+        self.assertEqual(json.loads(self.event(again)['data']), {'version': 1})
+
+    def test_stream_requires_a_session_and_ends_when_it_is_revoked(self):
+        self.assertEqual(self.get('wall/events', auth=False)[0], 401)
+        response = self.stream(); self.event(response)
+        self.app.sessions.remove(self.app.sessions.key(self.sid))
+        self.assertIsNone(self.event(response))                 # server closes the stream
+
+    def test_streams_are_bounded_and_released(self):
+        self.app.wall_streams = threading.BoundedSemaphore(1)
+        held = self.stream(); self.event(held)
+        status, _, body = self.get('wall/events')
+        self.assertEqual(status, 503); self.assertIn('Too many', body)
+        held.close(); held.conn.close()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:                      # released once the server notices the closed socket
+            response = self.stream()
+            if response.status == 200: break
+            response.read(); time.sleep(0.1)
+        self.assertEqual(response.status, 200)
+
+    def test_streams_are_recycled_after_their_lifetime(self):
+        self.app.wall_lifetime = 0.2
+        response = self.stream(); self.event(response)
+        started = time.monotonic()
+        self.assertIsNone(self.event(response))
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_stream_without_photo_storage_is_unavailable(self):
+        self.app.photos = None
+        self.assertEqual(self.get('wall/events')[0], 503)
+
+
+if __name__ == '__main__':
+    unittest.main()

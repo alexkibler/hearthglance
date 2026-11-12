@@ -79,13 +79,28 @@ client_max_body_size 50m;
 proxy_request_buffering off;
 ```
 
+### Wall event stream
+
+`<base>/wall/events` is a Server-Sent Events stream. The backend sends `X-Accel-Buffering: no` and a keep-alive comment every 25 seconds. It also recycles each stream after 15 minutes, and the browser reconnects and fetches the current album. For a dedicated proxy location, use:
+
+```nginx
+location /hearthglance/wall/events {
+    proxy_pass http://127.0.0.1:8135;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 120s;
+}
+```
+
+Each open stream holds one server thread, and at most 8 are accepted at a time. That's enough for the Pi, the Fire and a few browser tabs.
+
 ## Home Assistant embed
 
 When Home Assistant proxies the app on its own origin, the default `frame-ancestors 'self'` already allows the webpage card. Add `HG_FRAME_ANCESTORS` only when HA is served from a different HTTPS origin. Wildcards, paths and plain HTTP are rejected.
 
 ## Wall
 
-Wall is served at `<base>/wall/`. That path stays outside the Sidekick service worker's shell and photo caches, so kiosks always load it from the network.
+Wall is served at `<base>/wall/`. That path stays outside the Sidekick service worker's shell and photo caches, so kiosks always load it from the network. Sign in on each kiosk once at `<base>/wall/`; the sign-in link returns to Wall. Append `?interval=<seconds>` (3–300, default 12) to change the slide interval for one kiosk.
 
 ## Local staging
 
