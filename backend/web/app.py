@@ -481,18 +481,35 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Transfer-Encoding'): raise ValueError('Chunked uploads are not supported')
         return int(self.headers.get('Content-Length','0'))
 
-    def import_recipe(self, ha, body):
-        if not (self.app.data.recipes or '').startswith('sensor.'):
-            raise RecipeImportError('The Hearthglance recipe library is unavailable.', 503)
+    def read_json(self, limit=128*1024):
+        size = self.length()
+        if not 0 < size <= limit: raise ValueError('Invalid request size')
+        body = json.loads(self.rfile.read(size))
+        if not isinstance(body, dict): raise ValueError('Invalid request')
+        return body
+
+    def import_recipe(self, body):
         if body.keys() - {'url', 'preview'} or not isinstance(body.get('preview', False), bool):
             raise ValueError('Invalid recipe import')
+        preview = body.get('preview', False)
+        if preview:
+            origin = self.headers.get('Origin')
+            if ((origin and origin != self.app.origin) or self.headers.get('Sec-Fetch-Site') == 'cross-site'
+                    or self.headers.get_content_type() != 'application/json'):
+                raise RecipeImportError('Unexpected recipe preview request.', 403)
+        else:
+            guarded = self.write_guard()
+            if not guarded: return
+            _, ha = guarded
+            if not (self.app.data.recipes or '').startswith('sensor.'):
+                raise RecipeImportError('The Hearthglance recipe library is unavailable.', 503)
         if not self.app.recipe_fetches.acquire(blocking=False):
             raise RecipeImportError('Too many recipe imports are running. Try again in a moment.', 429)
         try:
             recipe = import_from_url(body.get('url'))
         finally:
             self.app.recipe_fetches.release()
-        if body.get('preview'):
+        if preview:
             self.send_json({'recipe':recipe})
             return
         result = self.app.data.save_imported_recipe(ha, recipe)
@@ -500,24 +517,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            path = urllib.parse.urlsplit(self.path).path
+            if path == self.app.prefix+'/api/recipes/import':
+                self.import_recipe(self.read_json(limit=32*1024));return
             guarded = self.write_guard()
             if not guarded: return
             key, ha = guarded
-            path = urllib.parse.urlsplit(self.path).path
             if path == self.app.prefix+'/api/photos':
                 # Raw image body is streamed to staging on the media mount, never buffered in memory.
                 photo, created = self.photo_store().upload(self.rfile, self.length(), self.headers.get('Idempotency-Key',''))
                 self.send_json({'photo':photo},201 if created else 200);return
-            size = self.length()
-            if not 0 < size <= 128*1024: raise ValueError('Invalid request size')
-            body = json.loads(self.rfile.read(size))
-            if not isinstance(body,dict): raise ValueError('Invalid request')
+            body = self.read_json()
             if path == self.app.prefix+'/api/logout':
                 self.app.sessions.remove(key);self.app.data.invalidate(key)
                 self.respond_headers(200,'application/json',2,{'Set-Cookie':self.set_cookie('hg_session','',0)})
                 self.wfile.write(b'{}');return
-            if path == self.app.prefix+'/api/recipes/import':
-                self.import_recipe(ha, body);return
             if path == self.app.prefix+'/api/command':
                 dedupe = body.pop('dedupe_source', False)
                 if dedupe:

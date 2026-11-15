@@ -6,19 +6,32 @@ const fields = draft.querySelector('fieldset');
 const login = document.querySelector('#import-login');
 const status = document.querySelector('#import-message');
 const another = document.querySelector('#import-another');
-let session;
+const draftKey = 'hearthglance-recipe-sign-in-draft';
 
 input.value = new URLSearchParams(location.search).get('url') || '';
 
-login.addEventListener('click', () => {
-  const params = new URLSearchParams({next:'import-recipe', url:input.value.trim()});
-  login.href = './auth/login?' + params;
+function readDraft() {
+  const recipe = Object.fromEntries(new FormData(draft));
+  recipe.categories = recipe.categories.split(',').map(value => value.trim()).filter(Boolean);
+  return recipe;
+}
+
+login.addEventListener('click', event => {
+  try {
+    sessionStorage.setItem(draftKey, JSON.stringify({url:input.value, recipe:readDraft()}));
+  } catch {
+    event.preventDefault();
+    status.textContent = 'Open Hearthglance in another tab and sign in there, then return here to save your edits.';
+    status.focus();
+    return;
+  }
+  login.href = './auth/login?' + new URLSearchParams({next:'import-recipe', url:input.value});
 });
 
-async function request(path, body) {
+async function request(path, body, csrf) {
   const response = await fetch('./' + path, body && {
     method:'POST',
-    headers:{'Content-Type':'application/json','X-HG-CSRF':session.csrf},
+    headers:{'Content-Type':'application/json', ...(csrf ? {'X-HG-CSRF':csrf} : {})},
     body:JSON.stringify(body),
   });
   const data = await response.json();
@@ -30,30 +43,34 @@ async function request(path, body) {
   return data;
 }
 
-function report(error) {
-  login.hidden = error.status !== 401;
-  status.textContent = login.hidden ? error.message : 'Sign in to import a recipe.';
+function report(error, saving = false) {
+  login.hidden = !saving || error.status !== 401;
+  status.textContent = login.hidden ? error.message : 'Sign in to save this recipe. Your edits will be here when you return.';
   (login.hidden ? status : login).focus();
 }
 
+function showDraft(recipe) {
+  for (const field of fields.querySelectorAll('[name]')) {
+    field.value = field.name === 'categories' ? recipe.categories.join(', ') : (recipe[field.name] || '');
+  }
+  source.hidden = true;
+  draft.hidden = false;
+  draft.querySelector('h2').focus();
+}
+
 async function preview() {
-  if (!session || previewButton.disabled || !input.reportValidity()) return;
+  if (previewButton.disabled || !input.reportValidity()) return;
   previewButton.disabled = input.readOnly = true;
   status.textContent = 'Reading the recipe…';
   try {
     const {recipe} = await request('api/recipes/import', {url:input.value.trim(), preview:true});
-    for (const field of fields.querySelectorAll('[name]')) {
-      field.value = field.name === 'categories' ? recipe.categories.join(', ') : (recipe[field.name] || '');
-    }
-    source.hidden = true;
-    draft.hidden = false;
+    input.value = recipe.link;
+    showDraft(recipe);
     status.textContent = '';
-    draft.querySelector('h2').focus();
   } catch (error) {
     report(error);
   } finally {
-    input.readOnly = false;
-    previewButton.disabled = !login.hidden;
+    input.readOnly = previewButton.disabled = false;
   }
 }
 
@@ -64,36 +81,40 @@ source.addEventListener('submit', event => {
 
 draft.addEventListener('submit', async event => {
   event.preventDefault();
-  if (fields.disabled || draft.hidden || !session) return;
-  const recipe = {};
-  for (const [name, value] of new FormData(draft)) recipe[name] = value.trim();
-  recipe.categories = recipe.categories.split(',').map(value => value.trim()).filter(Boolean);
+  if (fields.disabled || draft.hidden) return;
+  const recipe = readDraft();
+  for (const name of Object.keys(recipe)) {
+    if (typeof recipe[name] === 'string') recipe[name] = recipe[name].trim();
+  }
   if (!(recipe.title && recipe.ingredients && recipe.instructions)) {
     report(new Error('Enter a recipe name, ingredients, and directions.'));
     return;
   }
   fields.disabled = true;
+  login.hidden = true;
   status.textContent = 'Saving the recipe…';
   try {
+    const session = await request('api/session');
+    if (!session.config.recipes?.startsWith('sensor.')) throw new Error('The Hearthglance recipe library is unavailable.');
     await request('api/command', {
       type:'hearthglance_recipes/save',
       entity_id:session.config.recipes,
       dedupe_source:true,
       recipe,
-    });
+    }, session.csrf);
     draft.hidden = true;
     another.hidden = false;
     status.textContent = 'Saved ' + recipe.title + '.';
     status.focus();
   } catch (error) {
-    report(error);
-    fields.disabled = !login.hidden;
+    report(error, true);
+  } finally {
+    fields.disabled = false;
   }
 });
 
 function showSource() {
-  draft.hidden = another.hidden = true;
-  fields.disabled = false;
+  draft.hidden = another.hidden = login.hidden = true;
   source.hidden = false;
   status.textContent = '';
   input.focus();
@@ -104,11 +125,21 @@ another.addEventListener('click', () => {
   showSource();
 });
 
-request('api/session').then(current => {
-  if (!current.config.recipes || !current.config.recipes.startsWith('sensor.')) {
-    throw new Error('The Hearthglance recipe library is unavailable.');
+function takeDraft() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(draftKey));
+    sessionStorage.removeItem(draftKey);
+    if (saved?.url === input.value) return saved.recipe;
+  } catch {
+    // A blocked or expired browser store does not prevent fetching a fresh preview.
   }
-  session = current;
-  previewButton.disabled = false;
-  if (input.value) return preview();
-}).catch(report);
+}
+
+const saved = takeDraft();
+previewButton.disabled = false;
+if (saved) {
+  showDraft(saved);
+  status.textContent = 'Your draft is ready. Tap Save recipe when you’re done editing.';
+} else if (input.value) {
+  preview();
+}
