@@ -43,7 +43,34 @@ export function recipeMethods({icon,button}){return {
  _recipeForm(recipe,initial={}){
   this._editingRecipe=recipe;const r=recipe?recipeData(recipe):initial;
   const text=(label,name,rows=4)=>`<label class="field full">${esc(label)}<textarea name="${name}" rows="${rows}">${esc(r[name]||'')}</textarea></label>`;
-  this._openModal(recipe?'Edit recipe':'Save a family favorite',`<form data-form="recipe"><div class="form-grid">${this._field('Recipe name','title',r.title||'','text','full')}${text('Description','text',2)}${this._field('Servings / yield','yield',r.yield||'')}${this._field('Prep time','prepTime',r.prepTime||'')}${this._field('Cook time','cookTime',r.cookTime||'')}${this._field('Total time','totalTime',r.totalTime||'')}${this._field('Categories (comma separated)','categories',(r.categories||[]).join(', '),'text','full')}${text('Ingredients','ingredients')}${text('Instructions','instructions',6)}${text('Notes','notes',3)}${text('Nutrition','nutrition',3)}${this._field('Source URL (optional)','link',r.link||'','url','full')}<label class="checkbox-field"><input type="checkbox" name="favorite" ${r.favorite?'checked':''}> Favorite</label><label class="checkbox-field"><input type="checkbox" name="wantToCook" ${r.wantToCook?'checked':''}> Want to cook</label></div>${this._formFooter(recipe?'Save changes':'Save recipe')}</form>`,true);
+  const fromURL=!recipe&&this._nativeRecipes()&&this._fetchRecipe;
+  const urlField=this._field('Source URL (optional)','link',r.link||'','url','full');
+  const importer=fromURL?`${urlField}<div class="full">${button('Fill from URL','load-recipe-url')}<p class="section-note" data-import-status role="status" hidden></p><input type="hidden" name="imported_source"></div>`:'';
+  this._openModal(recipe?'Edit recipe':'Add recipe',`<form data-form="recipe"><div class="form-grid">${importer}${this._field('Recipe name','title',r.title||'','text','full')}${text('Description','text',2)}${this._field('Servings / yield','yield',r.yield||'')}${this._field('Prep time','prepTime',r.prepTime||'')}${this._field('Cook time','cookTime',r.cookTime||'')}${this._field('Total time','totalTime',r.totalTime||'')}${this._field('Categories (comma separated)','categories',(r.categories||[]).join(', '),'text','full')}${text('Ingredients','ingredients')}${text('Instructions','instructions',6)}${text('Notes','notes',3)}${text('Nutrition','nutrition',3)}${fromURL?'':urlField}<label class="checkbox-field"><input type="checkbox" name="favorite" ${r.favorite?'checked':''}> Favorite</label><label class="checkbox-field"><input type="checkbox" name="wantToCook" ${r.wantToCook?'checked':''}> Want to cook</label></div>${this._formFooter(recipe?'Save changes':'Save recipe')}</form>`,true);
+ },
+ async _loadRecipeURL(button){
+  const form=button.closest('form'),input=form.querySelector('[name=link]');
+  const status=form.querySelector('[data-import-status]'),save=form.querySelector('[type=submit]');
+  status.hidden=false;
+  if(!input.value.trim()||!input.checkValidity()){
+   status.textContent='Enter a recipe URL, then try again.';input.focus();return;
+  }
+  const fields=[...fieldNames.filter(name=>name!=='notes'),'categories'].map(name=>form.querySelector(`[name="${name}"]`));
+  const values=fields.map(field=>field.value);
+  button.disabled=save.disabled=input.readOnly=true;
+  status.textContent='Reading the recipe…';
+  try{
+   const recipe=await this._fetchRecipe(input.value.trim());
+   fields.forEach((field,index)=>{
+    if(field.value!==values[index])return;
+    const value=field.name==='categories'?recipe.categories.join(', '):(recipe[field.name]||'');
+    field.value=field.maxLength>0?value.slice(0,field.maxLength):value;
+   });
+   form.querySelector('[name=imported_source]').value=recipe.link;
+   status.textContent='Recipe filled in. Review the details, then save.';
+  }catch(error){
+   status.textContent=error.message||'Could not read the recipe. You can still add it manually.';
+  }finally{button.disabled=save.disabled=input.readOnly=false;}
  },
  _showRecipe(recipe){
   if(!recipe)return;this._selectedRecipe=recipe;const r=recipeData(recipe),safeURL=/^https?:\/\//i.test(r.link||'')?r.link:'';
@@ -57,7 +84,8 @@ export function recipeMethods({icon,button}){return {
   Object.assign(recipe,{categories:get('categories').split(',').map(c=>c.trim()).filter(Boolean),favorite:data.has('favorite'),wantToCook:data.has('wantToCook')});
   if(this._nativeRecipes()){
    const existing=this._editingRecipe;
-   const result=await this._hass.callWS({type:'hearthglance_recipes/save',entity_id:this._config.recipes,recipe,...(existing?{recipe_id:existing.uid,revision:recipeData(existing).revision}:{})});
+   const result=await this._hass.callWS({type:'hearthglance_recipes/save',entity_id:this._config.recipes,recipe,...(existing?{recipe_id:existing.uid,revision:recipeData(existing).revision}:
+    this._fetchRecipe&&get('imported_source')&&get('imported_source')===recipe.link?{dedupe_source:true}:{})});
    return {uid:result?.recipe_id||existing?.uid,summary:recipe.title,_recipe:recipe};
   }else{
    const before=new Set(this._recipeItems().map(r=>r.uid));
