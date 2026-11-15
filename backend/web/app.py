@@ -21,7 +21,7 @@ import urllib.request
 import websocket
 
 from photos import PhotoError, Photos
-from recipe_import import RecipeImportError, import_from_url, recipe_url
+from recipe_import import RecipeImportError, import_from_url, preview_thumbnail, recipe_url
 
 
 class LoginRequired(Exception):
@@ -292,6 +292,8 @@ class Application:
         # Each photo event stream holds one server thread (only while a slideshow plays); bound and recycle them.
         self.event_streams = threading.BoundedSemaphore(8)
         self.recipe_fetches = threading.BoundedSemaphore(3)
+        self.recipe_image_fetches = threading.BoundedSemaphore(2)
+        self.recipe_image_key = secrets.token_bytes(32)
         self.event_heartbeat, self.event_lifetime = 25, 900
         # Slideshow settings sent to the dashboard: seconds per photo, and minutes of inactivity before a
         # wall-sized screen starts it on its own (0 is off). Each device can change it in Settings.
@@ -417,6 +419,8 @@ class Handler(BaseHTTPRequestHandler):
                 'code':query.get('code',''),'code_verifier':pending[1]})
             sid = self.app.sessions.create(tokens)
             self.redirect(pending[2],self.set_cookie('hg_session',sid,30*86400));return
+        if path == '/api/recipes/preview-image':
+            self.recipe_preview_image(query);return
         if path.startswith('/api/'):
             key, ha = self.identity()
             if path == '/api/session':
@@ -488,6 +492,27 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict): raise ValueError('Invalid request')
         return body
 
+    def image_signature(self, url, expires):
+        return hmac.digest(self.app.recipe_image_key, (expires+'\n'+url).encode(), 'sha256').hex()
+
+    def recipe_preview_image(self, query):
+        url, expires, signature = (query.get(name, '') for name in ('url', 'expires', 'signature'))
+        if (not re.fullmatch(r'[0-9]{1,12}', expires) or int(expires) <= time.time()
+                or not re.fullmatch(r'[a-f0-9]{64}', signature)
+                or not hmac.compare_digest(signature, self.image_signature(url, expires))):
+            self.send_error(404);return
+        if not self.app.recipe_image_fetches.acquire(blocking=False):
+            self.send_error(429);return
+        try:
+            body = preview_thumbnail(url)
+        except RecipeImportError:
+            self.send_error(404);return
+        finally:
+            self.app.recipe_image_fetches.release()
+        cache = 'private, max-age='+str(max(0, min(600, int(expires)-int(time.time()))))
+        self.respond_headers(200, 'image/jpeg', len(body), cache=cache)
+        self.wfile.write(body)
+
     def import_recipe(self, body):
         if body.keys() - {'url', 'preview'} or not isinstance(body.get('preview', False), bool):
             raise ValueError('Invalid recipe import')
@@ -509,8 +534,12 @@ class Handler(BaseHTTPRequestHandler):
             recipe = import_from_url(body.get('url'))
         finally:
             self.app.recipe_fetches.release()
+        sources = recipe.pop('image_urls', [])
         if preview:
-            self.send_json({'recipe':recipe})
+            expires = str(int(time.time())+3600)
+            images = ['./api/recipes/preview-image?'+urllib.parse.urlencode({
+                'url':url,'expires':expires,'signature':self.image_signature(url, expires)}) for url in sources]
+            self.send_json({'recipe':recipe,'images':images})
             return
         result = self.app.data.save_imported_recipe(ha, recipe)
         self.send_json(result, 201 if result['created'] else 200)

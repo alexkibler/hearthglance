@@ -22,6 +22,27 @@ class ParserTests(TestCase):
         self.assertEqual(result['totalTime'], '30 min')
         self.assertEqual(result['link'], URL)
 
+    def test_preview_extracts_distinct_images_and_resolves_relative_urls(self):
+        schema = dict(RECIPE, image=['./soup.jpg?size=400', {'url':'./soup.jpg?size=800'},
+                                    {'contentUrl':'https://cdn.example.org/bowl.webp'}, 'data:image/png,abc'])
+        html = f'<script type="application/ld+json">{json.dumps(schema)}</script>'
+        result = recipe_import.extract(html, URL)
+        self.assertEqual(result['image_urls'], ['https://recipes.example.org/soup.jpg?size=400',
+                                                 'https://cdn.example.org/bowl.webp'])
+
+    def test_pinterest_pin_imports_the_publisher_recipe_and_uses_pin_photo_as_fallback(self):
+        short = 'https://pin.it/example'
+        pin = 'https://www.pinterest.com/pin/123/sent/'
+        image = 'https://i.pinimg.com/example.jpg'
+        pin_html = f'<meta property="pinterestapp:source" content="{URL}"><meta property="og:image" content="{image}">'
+        article = f'<script type="application/ld+json">{json.dumps(RECIPE)}</script>'
+        with patch('recipe_import.download', side_effect=[(pin,pin_html),(URL,article)]) as fetch:
+            result = recipe_import.import_from_url(short)
+        self.assertEqual([call.args[0] for call in fetch.call_args_list], [short, URL])
+        self.assertEqual(result['title'], RECIPE['name'])
+        self.assertEqual(result['link'], URL)
+        self.assertEqual(result['image_urls'], [image])
+
     def test_microdata_on_an_unregistered_publisher(self):
         html = '''<article itemscope itemtype="https://schema.org/Recipe">
             <h1 itemprop="name">Lentil soup</h1>

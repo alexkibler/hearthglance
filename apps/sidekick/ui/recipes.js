@@ -45,7 +45,7 @@ export function recipeMethods({icon,button}){return {
   const text=(label,name,rows=4)=>`<label class="field full">${esc(label)}<textarea name="${name}" rows="${rows}">${esc(r[name]||'')}</textarea></label>`;
   const fromURL=!recipe&&this._nativeRecipes()&&this._fetchRecipe;
   const urlField=this._field('Source URL (optional)','link',r.link||'','url','full');
-  const importer=fromURL?`${urlField}<div class="full">${button('Fill from URL','load-recipe-url')}<p class="section-note" data-import-status role="status" hidden></p><input type="hidden" name="imported_source"></div>`:'';
+  const importer=fromURL?`${urlField}<div class="full">${button('Fill from URL','load-recipe-url')}<p class="section-note" data-import-status role="status" hidden></p><input type="hidden" name="imported_source"></div><div class="full recipe-preview-images" data-import-images hidden></div>`:'';
   this._openModal(recipe?'Edit recipe':'Add recipe',`<form data-form="recipe"><div class="form-grid">${importer}${this._field('Recipe name','title',r.title||'','text','full')}${text('Description','text',2)}${this._field('Servings / yield','yield',r.yield||'')}${this._field('Prep time','prepTime',r.prepTime||'')}${this._field('Cook time','cookTime',r.cookTime||'')}${this._field('Total time','totalTime',r.totalTime||'')}${this._field('Categories (comma separated)','categories',(r.categories||[]).join(', '),'text','full')}${text('Ingredients','ingredients')}${text('Instructions','instructions',6)}${text('Notes','notes',3)}${text('Nutrition','nutrition',3)}${fromURL?'':urlField}<label class="checkbox-field"><input type="checkbox" name="favorite" ${r.favorite?'checked':''}> Favorite</label><label class="checkbox-field"><input type="checkbox" name="wantToCook" ${r.wantToCook?'checked':''}> Want to cook</label></div>${this._formFooter(recipe?'Save changes':'Save recipe')}</form>`,true);
  },
  async _loadRecipeURL(button){
@@ -60,7 +60,19 @@ export function recipeMethods({icon,button}){return {
   button.disabled=save.disabled=input.readOnly=true;
   status.textContent='Reading the recipe…';
   try{
-   const recipe=await this._fetchRecipe(input.value.trim());
+   const {recipe,images=[]}=await this._fetchRecipe(input.value.trim());
+   const gallery=form.querySelector('[data-import-images]');
+   gallery.textContent='';gallery.hidden=true;
+   for(const src of images){
+    const image=document.createElement('img');
+    image.alt=recipe.title;
+    image.decoding='async';
+    image.hidden=true;
+    image.addEventListener('load',()=>{
+     if(image.parentNode===gallery)image.hidden=gallery.hidden=false;
+    });
+    gallery.append(image);image.src=src;
+   }
    fields.forEach((field,index)=>{
     if(field.value!==values[index])return;
     const value=field.name==='categories'?recipe.categories.join(', '):(recipe[field.name]||'');
@@ -104,5 +116,6 @@ export function recipeMethods({icon,button}){return {
 };}
 
 export const recipeStyles=`
+.recipe-preview-images{display:flex;gap:12px;flex-wrap:wrap}.recipe-preview-images[hidden],.recipe-preview-images img[hidden]{display:none}.recipe-preview-images img{width:min(100%,280px);max-height:220px;object-fit:contain;border-radius:12px;background:var(--soft)}
 .recipe-library{min-height:0;overflow:auto;padding:0 2px 24px}.recipe-tools{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:12px}.recipe-tools label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--muted)}.recipe-tools input[type=search],.recipe-tools select{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface);color:var(--ink);font:inherit;font-size:15px}.recipe-search{flex:1;min-width:180px}.recipe-tools .recipe-favorites-filter{flex-direction:row;align-items:center;min-height:44px}.recipe-favorites-filter input{width:20px;height:20px;accent-color:var(--accent)}.recipe-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;margin-top:16px}.recipe-card{padding:0;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface);text-align:left;min-width:0;color:var(--ink)}.recipe-cover{display:block;width:100%;height:150px;object-fit:cover;background:var(--soft)}.recipe-placeholder{display:grid;place-items:center;color:var(--accent)}.recipe-placeholder svg{width:42px;height:42px}.recipe-card-copy{display:block;padding:15px;position:relative}.recipe-card strong{display:block;font-size:16px;line-height:1.4;overflow-wrap:anywhere}.recipe-card small{display:block;font-size:12px;line-height:1.5;color:var(--muted);margin-top:8px}.recipe-favorite{display:inline-block;color:var(--accent);margin-top:8px}.recipe-tags{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px}.recipe-tag{background:var(--soft);color:var(--accent);padding:6px 10px;border-radius:16px;font-size:12px}.recipe-photo{width:100%;max-height:420px;object-fit:contain;border-radius:12px;margin-bottom:16px;background:var(--bg)}.recipe-copy{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.7}.recipe-section{margin:24px 0}.recipe-section h3{font-size:18px;margin:0 0 12px}.recipe-times{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:16px 0;border-block:1px solid var(--line);margin:18px 0}.recipe-times dt{font-size:11px;color:var(--muted);margin-bottom:5px}.recipe-times dd{margin:0;font-size:14px;overflow-wrap:anywhere}.recipes-panel{overflow:auto}.phone .recipe-library{padding:18px 16px}.phone .recipe-tools{gap:12px}.phone .recipe-search{flex-basis:100%}.phone .recipe-tools>label:nth-child(2){flex:1}.phone .recipe-results{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.phone .recipe-cover{height:112px}.phone .recipe-card-copy{padding:11px}.phone .recipe-card strong{font-size:14px}.phone .recipe-card small{font-size:11px}@media(max-width:360px){.phone .recipe-results{grid-template-columns:1fr}.phone .recipe-cover{height:155px}}
 `;

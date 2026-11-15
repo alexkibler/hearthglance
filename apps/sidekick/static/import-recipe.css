@@ -90,3 +90,20 @@ input:focus, textarea:focus {
 .recipe-import-fields button { margin-top: 0; }
 button:disabled { opacity: .58; cursor: default; }
 #import-message { overflow-wrap: anywhere; }
+
+.recipe-preview-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.recipe-preview-images img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  object-fit: contain;
+}

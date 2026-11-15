@@ -13,6 +13,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 test('a signed-out user can preview and keep edits through sign-in before saving', async () => {
   const calls = [];
   const storage = new Map();
+  const images = ['./api/recipes/preview-image?signature=test'];
   let signedIn = false;
   let duplicate = true;
   const session = {config:{recipes:'sensor.fixture_recipes'}, csrf:'test'};
@@ -31,7 +32,7 @@ test('a signed-out user can preview and keep edits through sign-in before saving
         calls.push({path, body:options && JSON.parse(options.body)});
         if (path === './api/recipes/import') {
           assert.equal(options.headers['X-HG-CSRF'], undefined);
-          return {ok:true, json:async () => ({recipe})};
+          return {ok:true, json:async () => ({recipe, images})};
         }
         if (path === './api/session') return signedIn ? {ok:true, json:async () => session}
           : {ok:false, status:401, json:async () => ({error:'Sign in first.'})};
@@ -45,7 +46,7 @@ test('a signed-out user can preview and keep edits through sign-in before saving
       },
     });
     const draft = document.querySelector('#import-draft');
-    return {document, draft, login:document.querySelector('#import-login'),
+    return {document, draft, loadPhoto:()=>draft.querySelector('img').dispatchEvent(new Event('load')), login:document.querySelector('#import-login'),
       field:name => draft.querySelector(`[name="${name}"]`),
       submit:() => draft.dispatchEvent(new Event('submit', {cancelable:true})),
       signIn:() => document.querySelector('#import-login').dispatchEvent(new Event('click', {cancelable:true}))};
@@ -57,6 +58,9 @@ test('a signed-out user can preview and keep edits through sign-in before saving
   assert.equal(first.draft.hidden, false);
   assert.equal(first.field('title').value, recipe.title);
   assert.equal(first.login.hidden, true);
+  first.loadPhoto();
+  assert.equal(first.draft.querySelector('[aria-label="Recipe photos"]').hidden, false);
+  assert.equal(first.draft.querySelector('img').getAttribute('src'), images[0]);
 
   first.field('title').value = 'Our broccoli soup';
   first.field('ingredients').value += '\nBlack pepper';
@@ -76,6 +80,7 @@ test('a signed-out user can preview and keep edits through sign-in before saving
   assert.equal(returned.field('title').value, 'Our broccoli soup');
   assert.equal(returned.field('ingredients').value, 'Broccoli\nCheddar\nBlack pepper');
   assert.equal(storage.size, 0);
+  assert.equal(returned.draft.querySelector('img').getAttribute('src'), images[0]);
   assert.equal(calls.length, 2);
   returned.submit();
   await settle();

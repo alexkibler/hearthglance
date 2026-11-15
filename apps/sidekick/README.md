@@ -27,6 +27,8 @@ it. Append the encoded value to `<app base>/import-recipe?url=` with a **Text**
 action and pass the result to **Open URLs**.
 
 The importer takes ingredients, directions, and available recipe details from
-the publisher's public page and keeps the original source link. It supports
+the publisher's public page and keeps the original source link. Pinterest pin
+links follow the pin to the recipe publisher. Available publisher photos appear
+in the preview. It supports
 structured data and some publisher-specific HTML. Pages that block the server
 or omit usable recipe data produce an error and can still be entered manually.

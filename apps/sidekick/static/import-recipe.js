@@ -3,10 +3,13 @@ const input = document.querySelector('#recipe-url');
 const previewButton = source.querySelector('button');
 const draft = document.querySelector('#import-draft');
 const fields = draft.querySelector('fieldset');
+const gallery = draft.querySelector('.recipe-preview-images');
 const login = document.querySelector('#import-login');
 const status = document.querySelector('#import-message');
 const another = document.querySelector('#import-another');
 const draftKey = 'hearthglance-recipe-sign-in-draft';
+
+let previewImages = [];
 
 input.value = new URLSearchParams(location.search).get('url') || '';
 
@@ -18,7 +21,7 @@ function readDraft() {
 
 login.addEventListener('click', event => {
   try {
-    sessionStorage.setItem(draftKey, JSON.stringify({url:input.value, recipe:readDraft()}));
+    sessionStorage.setItem(draftKey, JSON.stringify({url:input.value, recipe:readDraft(), images:previewImages}));
   } catch {
     event.preventDefault();
     status.textContent = 'Open Hearthglance in another tab and sign in there, then return here to save your edits.';
@@ -49,7 +52,21 @@ function report(error, saving = false) {
   (login.hidden ? status : login).focus();
 }
 
-function showDraft(recipe) {
+function showDraft(recipe, images = []) {
+  previewImages = images;
+  gallery.textContent = '';
+  gallery.hidden = true;
+  for (const url of images) {
+    const image = document.createElement('img');
+    image.alt = recipe.title;
+    image.decoding = 'async';
+    image.hidden = true;
+    image.addEventListener('load', () => {
+      if (image.parentNode === gallery) image.hidden = gallery.hidden = false;
+    });
+    gallery.append(image);
+    image.src = url;
+  }
   for (const field of fields.querySelectorAll('[name]')) {
     field.value = field.name === 'categories' ? recipe.categories.join(', ') : (recipe[field.name] || '');
   }
@@ -63,9 +80,9 @@ async function preview() {
   previewButton.disabled = input.readOnly = true;
   status.textContent = 'Reading the recipe…';
   try {
-    const {recipe} = await request('api/recipes/import', {url:input.value.trim(), preview:true});
+    const {recipe, images} = await request('api/recipes/import', {url:input.value.trim(), preview:true});
     input.value = recipe.link;
-    showDraft(recipe);
+    showDraft(recipe, images);
     status.textContent = '';
   } catch (error) {
     report(error);
@@ -129,7 +146,7 @@ function takeDraft() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(draftKey));
     sessionStorage.removeItem(draftKey);
-    if (saved?.url === input.value) return saved.recipe;
+    if (saved?.url === input.value) return saved;
   } catch {
     // A blocked or expired browser store does not prevent fetching a fresh preview.
   }
@@ -138,7 +155,7 @@ function takeDraft() {
 const saved = takeDraft();
 previewButton.disabled = false;
 if (saved) {
-  showDraft(saved);
+  showDraft(saved.recipe, saved.images);
   status.textContent = 'Your draft is ready. Tap Save recipe when you’re done editing.';
 } else if (input.value) {
   preview();

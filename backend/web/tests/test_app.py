@@ -152,7 +152,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request(path,'POST',preview,auth=False,headers={'Content-Type':'text/plain'})[0],403)
             fetch.assert_not_called()
             status,_,body=self.request(path,'POST',preview,auth=False,headers={'X-HG-CSRF':''})
-            self.assertEqual((status,json.loads(body)),(200,{'recipe':recipe}))
+            self.assertEqual((status,json.loads(body)),(200,{'recipe':recipe,'images':[]}))
             self.assertEqual(records,[])
             status,_,body=self.request(path,'POST',link)
             self.assertEqual((status,json.loads(body)),(201,{'recipe_id':'test','title':'Soup','created':True}))
@@ -162,6 +162,21 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('api/command','POST',command,auth=False)[0],401)
             self.assertEqual(self.request('api/command','POST',command)[0],409)
             self.assertEqual(len(records),1)
+
+    def test_preview_images_are_signed_public_thumbnails(self):
+        img='https://images.example.org/food.jpg'
+        recipe={'title':'Soup','link':'https://example.org/soup','image_urls':[img]}
+        with patch('app.import_from_url',return_value=recipe), patch('app.preview_thumbnail',return_value=b'jpeg') as photo:
+            status,_,body=self.request('api/recipes/import','POST',{'url':recipe['link'],'preview':True},auth=False)
+            self.assertEqual(status,200)
+            preview=json.loads(body)
+            self.assertNotIn('image_urls',preview['recipe'])
+            image=preview['images'][0].removeprefix('./')
+            status,headers,body=self.request(image,auth=False)
+            self.assertEqual((status,headers['Content-Type'],body),(200,'image/jpeg',b'jpeg'))
+            photo.assert_called_once_with(img)
+            self.assertEqual(self.request(image.replace('food.jpg','other.jpg'),auth=False)[0],404)
+            self.assertEqual(photo.call_count,1)
 
     def test_recipe_share_url_survives_oauth(self):
         link='https://example.org/soup?foo=bar&servings=2'

@@ -11,7 +11,7 @@ The root `Dockerfile` builds the main backend image with the dashboard app inclu
 
 Send `POST <app base>/api/recipes/import` with JSON
 `{"url":"https://recipe.example/soup","preview":true}` to get an editable
-`recipe` without signing in. To save an edited recipe, use the signed-in
+`recipe` and available photo preview links without signing in. To save an edited recipe, use the signed-in
 `api/command` recipe save with `dedupe_source:true`. Saving an unedited URL
 through the import endpoint also requires the Hearthglance session cookie and
 the `X-HG-CSRF` header from `api/session`.

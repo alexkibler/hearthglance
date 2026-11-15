@@ -59,6 +59,7 @@ test('filling a recipe from the backend keeps notes and edits made during the fe
  fields.get('cookTime').value='Previous recipe';
  const status={},save={},form={querySelector:selector=>{
   if(selector==='[data-import-status]')return status;
+  if(selector==='[data-import-images]')return {};
   if(selector==='[type=submit]')return save;
   return fields.get(selector.slice(6,-1).replaceAll('"',''));
  }};
@@ -70,8 +71,8 @@ test('filling a recipe from the backend keeps notes and edits made during the fe
  }},button);
  assert.equal(save.disabled,true);
  fields.get('title').value='My soup';
- finish({title:'Publisher title',link:'https://example.org/soup/',ingredients:'Leeks',instructions:'Simmer',
-   totalTime:'30 min',categories:['Soups']});
+ finish({recipe:{title:'Publisher title',link:'https://example.org/soup/',ingredients:'Leeks',instructions:'Simmer',
+   totalTime:'30 min',categories:['Soups']}});
  await pending;
  assert.equal(fields.get('title').value,'My soup');
  assert.equal(fields.get('notes').value,'Use a small pot.');

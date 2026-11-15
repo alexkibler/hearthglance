@@ -1,17 +1,23 @@
 """Read structured recipes from public web pages."""
 import http.client
+from html.parser import HTMLParser
 import ipaddress
+from io import BytesIO
 import re
 import socket
 import time
 from urllib.parse import quote, urljoin, urlsplit
 
+from PIL import Image, ImageOps
 from recipe_scrapers import scrape_html
 from recipe_scrapers._exceptions import RecipeScrapersExceptions
 
 
 MAX_URL = 4096
 MAX_PAGE = 4 * 1024 * 1024
+PAGE_TYPES = ('text/html', 'application/xhtml+xml')
+IMAGE_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif')
+MAX_PREVIEW_IMAGES = 3
 REDIRECTS = {301, 302, 303, 307, 308}
 NUTRITION_FIELDS = {
     'calories': 'Calories', 'proteinContent': 'Protein', 'carbohydrateContent': 'Carbohydrates',
@@ -68,9 +74,9 @@ def public_addresses(host, port):
     return list(dict.fromkeys(address[0] for _, _, _, _, address in addresses))
 
 
-def download(url):
+def fetch_resource(url, types, limit, timeout):
     """Validate every redirect and connect to the vetted IP while retaining HTTPS hostname checks."""
-    deadline = time.monotonic() + 15
+    deadline = time.monotonic() + timeout
     try:
         for _ in range(5):
             parts = urlsplit(url)
@@ -96,7 +102,7 @@ def download(url):
             try:
                 connection.request('GET', target, headers={
                     'User-Agent': 'Hearthglance Recipe Import/1.0',
-                    'Accept': 'text/html, application/xhtml+xml',
+                    'Accept': ', '.join(types),
                     'Accept-Encoding': 'identity',
                 })
                 with connection.getresponse() as response:
@@ -105,9 +111,9 @@ def download(url):
                         continue
                     if response.status != 200:
                         raise RecipeImportError(f'The recipe website returned HTTP {response.status}.', 502)
-                    if (response.headers.get_content_type() not in ('text/html', 'application/xhtml+xml')
+                    if (response.headers.get_content_type() not in types
                             or response.getheader('Content-Encoding', 'identity').lower() != 'identity'):
-                        raise RecipeImportError('This link did not return a readable web page.')
+                        raise RecipeImportError('The website did not return the requested content type.')
                     body = bytearray()
                     while True:
                         if time.monotonic() >= deadline:
@@ -116,17 +122,59 @@ def download(url):
                         if not chunk:
                             break
                         body.extend(chunk)
-                        if len(body) > MAX_PAGE:
-                            raise RecipeImportError('The recipe page is too large.')
-                    try:
-                        return url, body.decode(response.headers.get_content_charset() or 'utf-8', errors='replace')
-                    except LookupError:
-                        return url, body.decode('utf-8', errors='replace')
+                        if len(body) > limit:
+                            raise RecipeImportError('The response is too large.')
+                    return url, body, response.headers.get_content_charset()
             finally:
                 connection.close()
     except (OSError, http.client.HTTPException):
         raise RecipeImportError('Could not reach the recipe website.', 502) from None
     raise RecipeImportError('The recipe website redirected too many times.', 502)
+
+
+def download(url):
+    final_url, body, charset = fetch_resource(url, PAGE_TYPES, MAX_PAGE, 15)
+    try:
+        return final_url, body.decode(charset or 'utf-8', errors='replace')
+    except LookupError:
+        return final_url, body.decode('utf-8', errors='replace')
+
+
+def preview_thumbnail(url):
+    _, body, _ = fetch_resource(recipe_url(url), IMAGE_TYPES, MAX_PAGE, 8)
+    try:
+        with Image.open(BytesIO(body), formats=('JPEG', 'PNG', 'WEBP', 'AVIF', 'GIF')) as photo:
+            if photo.width * photo.height > 12_000_000:
+                raise RecipeImportError('This recipe image is too large.')
+            photo.thumbnail((880, 880))
+            output = BytesIO()
+            ImageOps.exif_transpose(photo).convert('RGB').save(output, format='JPEG', quality=85)
+            return output.getvalue()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        raise RecipeImportError('This recipe image could not be opened.') from None
+
+
+def image_urls(value, fallback, page_url):
+    values = value if isinstance(value, list) else [value]
+    images = {}
+    for candidate in values:
+        if isinstance(candidate, dict):
+            candidate = candidate.get('url') or candidate.get('contentUrl') or candidate.get('@id')
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        try:
+            url = recipe_url(urljoin(page_url, candidate))
+        except ValueError:
+            continue
+        parts = urlsplit(url)
+        # Many publishers provide the same photo in several crops.
+        key = (parts.netloc, parts.path) if re.search(r'\.(?:jpe?g|png|webp|avif|gif)$', parts.path, re.I) else url
+        images.setdefault(key, url)
+        if len(images) == MAX_PREVIEW_IMAGES:
+            break
+    if not images and fallback:
+        return image_urls(fallback, None, page_url)
+    return list(images.values())
 
 
 def clean(value):
@@ -161,7 +209,7 @@ def extract(page, final_url):
     def field(method, default=None):
         try:
             return getattr(scraper, method)()
-        except (RecipeScrapersExceptions, ValueError, AttributeError, IndexError, KeyError, TypeError):
+        except (RecipeScrapersExceptions, ValueError, AttributeError, IndexError, KeyError, TypeError, NotImplementedError):
             return default
 
     title = clean(field('title'))
@@ -181,9 +229,58 @@ def extract(page, final_url):
         'nutrition': result_lines(f'{label}: {text}' for key, label in NUTRITION_FIELDS.items()
                                   if (text := clean(nutrition.get(key)))),
         'link': source_url(field('canonical_url'), final_url),
+        'image_urls': image_urls(scraper.schema.data.get('image'), field('image'), final_url),
     }
+
+
+def is_pinterest(url):
+    host = urlsplit(url).hostname or ''
+    return host == 'pin.it' or bool(re.fullmatch(
+        r'(?:[a-z0-9-]+\.)*pinterest\.(?:com|[a-z]{2}|(?:co|com)\.[a-z]{2})', host))
+
+
+class PinMetadata(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.values = {}
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'meta':
+            attrs = dict(attrs)
+            name = attrs.get('property') or attrs.get('name')
+            if name in ('pinterestapp:source', 'og:see_also', 'og:image') and attrs.get('content'):
+                self.values.setdefault(name, attrs['content'])
 
 
 def import_from_url(value):
     final_url, page = download(recipe_url(value))
-    return extract(page, final_url)
+    if not is_pinterest(final_url):
+        return extract(page, final_url)
+
+    pin = PinMetadata()
+    pin.feed(page)
+    recipe = source_error = None
+    for link in dict.fromkeys(pin.values.get(field) for field in ('pinterestapp:source', 'og:see_also')):
+        if not link:
+            continue
+        try:
+            source = recipe_url(urljoin(final_url, link))
+            if is_pinterest(source):
+                continue
+            publisher, article = download(source)
+            if is_pinterest(publisher):
+                continue
+            recipe = extract(article, publisher)
+            break
+        except RecipeImportError as error:
+            source_error = error
+    if recipe is None:
+        try:
+            recipe = extract(page, final_url)
+        except RecipeImportError:
+            if source_error:
+                raise source_error from None
+            raise RecipeImportError('This Pinterest pin does not link to a readable recipe.') from None
+    if not recipe['image_urls']:
+        recipe['image_urls'] = image_urls(pin.values.get('og:image'), None, final_url)
+    return recipe
