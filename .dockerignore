@@ -9,6 +9,7 @@
 !apps/sidekick/ui/
 !apps/sidekick/static/index.html
 !apps/sidekick/static/import-recipe.html
+!apps/sidekick/static/import-recipe.css
 !apps/sidekick/static/import-recipe.js
 !apps/sidekick/static/app.css
 !apps/sidekick/static/icon.svg

@@ -457,7 +457,7 @@ class Handler(BaseHTTPRequestHandler):
             self.redirect(self.app.public+'import-recipe'+('?' + parsed.query if parsed.query else ''));return
         asset = {'/':'index.html','/import-recipe':'import-recipe.html'}.get(path, path.lstrip('/'))
         if asset not in {'index.html','app.js','app.css','sw.js','manifest.webmanifest','icon.svg',
-                        'import-recipe.html','import-recipe.js',
+                        'import-recipe.html','import-recipe.css','import-recipe.js',
                         'icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'}:
             self.send_error(404);return
         file = self.app.static/asset
