@@ -7,7 +7,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, urlencode
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import app
@@ -132,6 +132,64 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual((status,headers['Location']),(303,'https://app.test/hearthglance/?idle=10&debug=1'))
         for path in ('wall/wall.js','wall/index.html','wall/events'):
             self.assertEqual(self.request(path,auth=False)[0],404)
+    def test_recipe_preview_save_and_retry_share_the_same_fetcher(self):
+        recipe={'title':'Soup','link':'https://example.org/soup','ingredients':'Carrots','instructions':'Boil'}
+        records=[]
+        def response(command):
+            if command['type']=='hearthglance_recipes/list':
+                return {'recipes':records}
+            self.assertEqual(command['entity_id'],CONFIG['recipes'])
+            records.append(dict(command['recipe'],id='test'))
+            return {'recipe_id':'test'}
+        with patch('app.import_from_url',return_value=recipe) as fetch, patch.object(FakeHA,'ws',side_effect=response):
+            path='api/recipes/import'
+            link={'url':recipe['link']}
+            self.assertEqual(self.request('import-recipe?'+urlencode(link),auth=False)[0],200)
+            self.assertEqual(self.request(path,'POST',link,auth=False)[0],401)
+            self.assertEqual(self.request(path,'POST',link,headers={'X-HG-CSRF':''})[0],403)
+            preview=dict(link,preview=True)
+            self.assertEqual(self.request(path,'POST',preview,auth=False,headers={'Origin':'https://other.test'})[0],403)
+            self.assertEqual(self.request(path,'POST',preview,auth=False,headers={'Content-Type':'text/plain'})[0],403)
+            fetch.assert_not_called()
+            status,_,body=self.request(path,'POST',preview,auth=False,headers={'X-HG-CSRF':''})
+            self.assertEqual((status,json.loads(body)),(200,{'recipe':recipe,'images':[]}))
+            self.assertEqual(records,[])
+            status,_,body=self.request(path,'POST',link)
+            self.assertEqual((status,json.loads(body)),(201,{'recipe_id':'test','title':'Soup','created':True}))
+            status,_,body=self.request(path,'POST',link)
+            self.assertEqual((status,json.loads(body)['created']),(200,False))
+            command={'type':'hearthglance_recipes/save','entity_id':CONFIG['recipes'],'recipe':recipe,'dedupe_source':True}
+            self.assertEqual(self.request('api/command','POST',command,auth=False)[0],401)
+            self.assertEqual(self.request('api/command','POST',command)[0],409)
+            self.assertEqual(len(records),1)
+
+    def test_preview_images_are_signed_public_thumbnails(self):
+        img='https://images.example.org/food.jpg'
+        recipe={'title':'Soup','link':'https://example.org/soup','image_urls':[img]}
+        with patch('app.import_from_url',return_value=recipe), patch('app.preview_thumbnail',return_value=b'jpeg') as photo:
+            status,_,body=self.request('api/recipes/import','POST',{'url':recipe['link'],'preview':True},auth=False)
+            self.assertEqual(status,200)
+            preview=json.loads(body)
+            self.assertNotIn('image_urls',preview['recipe'])
+            image=preview['images'][0].removeprefix('./')
+            status,headers,body=self.request(image,auth=False)
+            self.assertEqual((status,headers['Content-Type'],body),(200,'image/jpeg',b'jpeg'))
+            photo.assert_called_once_with(img)
+            self.assertEqual(self.request(image.replace('food.jpg','other.jpg'),auth=False)[0],404)
+            self.assertEqual(photo.call_count,1)
+
+    def test_recipe_share_url_survives_oauth(self):
+        link='https://example.org/soup?foo=bar&servings=2'
+        query=urlencode({'next':'import-recipe','url':link})
+        _,headers,_=self.request('auth/login?'+query,auth=False)
+        state=parse_qs(urlsplit(headers['Location']).query)['state'][0]
+        with patch.object(self.app.sessions,'token_request',return_value={'access_token':'new','refresh_token':'refresh','expires_in':3600}):
+            status,headers,_=self.request('auth/callback?code=test&state='+state,auth=False,headers={'Cookie':'hg_oauth='+state})
+        self.assertEqual(status,303)
+        redirect=urlsplit(headers['Location'])
+        self.assertEqual(redirect.path,'/hearthglance/import-recipe')
+        self.assertEqual(parse_qs(redirect.query)['url'],[link])
+
     def test_session_carries_slideshow_settings(self):
         self.app.slideshow_idle=10
         body=json.loads(self.request('api/session')[2])

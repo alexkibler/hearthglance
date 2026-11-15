@@ -47,6 +47,8 @@ function mount(config,snapshot,online=true) {
   // Standalone page routing, not HA's router. Use the same UI in an iframe.
   card.setConfig({...config,routes:undefined,page:undefined,type:'custom:hearthglance-card'});
   card._prefs.dark=card._prefs.dark!==false;
+  if(session.csrf)card._fetchRecipe=url=>request('api/recipes/import',{method:'POST',
+    body:JSON.stringify({url,preview:true}),headers:{'X-HG-CSRF':session.csrf}});
   // Photos are Hearthglance-owned and online-only; the tile appears when the server has photo storage configured.
   if(session.photos){
     card._pages=[...card._pages.filter(p=>p!=='settings'),'photos','settings'];

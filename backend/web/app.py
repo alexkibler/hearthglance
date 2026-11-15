@@ -21,6 +21,7 @@ import urllib.request
 import websocket
 
 from photos import PhotoError, Photos
+from recipe_import import RecipeImportError, import_from_url, preview_thumbnail, recipe_url
 
 
 class LoginRequired(Exception):
@@ -155,6 +156,7 @@ class Data:
             self.entities.update(value if isinstance(value, list) else [value])
         self.entities.discard(None)
         self.cache, self.lock = {}, threading.RLock()
+        self.recipe_saves = threading.Lock()
 
     @staticmethod
     def dates(start, end):
@@ -229,6 +231,24 @@ class Data:
         if set(command)-allowed: raise ValueError('Unexpected action fields')
         return ha.ws(command)
 
+    def save_imported_recipe(self, ha, recipe):
+        if not (self.recipes or '').startswith('sensor.'):
+            raise RecipeImportError('The Hearthglance recipe library is unavailable.', 503)
+        source = recipe_url(recipe.get('link'))
+        # Serialize the lookup and write so simultaneous imports cannot create duplicates.
+        with self.recipe_saves:
+            library = ha.ws({'type':'hearthglance_recipes/list','entity_id':self.recipes})
+            for existing in library['recipes']:
+                try:
+                    if recipe_url(existing.get('link')) == source:
+                        return {'recipe_id':existing['id'],'title':existing['title'],'created':False}
+                except RecipeImportError:
+                    continue
+            result = self.command(ha, {'type':'hearthglance_recipes/save','entity_id':self.recipes,'recipe':recipe})
+            with self.lock:
+                self.cache.clear()
+            return {'recipe_id':result['recipe_id'],'title':recipe['title'],'created':True}
+
     def service(self, ha, body):
         if body.get('domain') != 'todo' or body.get('service') not in ('add_item','update_item','remove_item'):
             raise ValueError('Unsupported list action')
@@ -271,6 +291,9 @@ class Application:
         self.photos = photos
         # Each photo event stream holds one server thread (only while a slideshow plays); bound and recycle them.
         self.event_streams = threading.BoundedSemaphore(8)
+        self.recipe_fetches = threading.BoundedSemaphore(3)
+        self.recipe_image_fetches = threading.BoundedSemaphore(2)
+        self.recipe_image_key = secrets.token_bytes(32)
         self.event_heartbeat, self.event_lifetime = 25, 900
         # Slideshow settings sent to the dashboard: seconds per photo, and minutes of inactivity before a
         # wall-sized screen starts it on its own (0 is off). Each device can change it in Settings.
@@ -373,9 +396,16 @@ class Handler(BaseHTTPRequestHandler):
             state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
             import base64
             challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+            destination = self.app.public
+            if query.get('next') == 'import-recipe':
+                destination += 'import-recipe'
+                try:
+                    destination += '?' + urllib.parse.urlencode({'url':recipe_url(query.get('url'))})
+                except RecipeImportError:
+                    pass
             with self.app.sessions.lock:
                 self.app.sessions.pending = {k:v for k,v in self.app.sessions.pending.items() if v[0]>time.time()}
-                self.app.sessions.pending[state] = (time.time()+600, verifier)
+                self.app.sessions.pending[state] = (time.time()+600, verifier, destination)
             url = self.app.ha_public+'/auth/authorize?'+urllib.parse.urlencode({
                 'client_id':self.app.public,'redirect_uri':self.app.public+'auth/callback',
                 'state':state,'code_challenge':challenge,'code_challenge_method':'S256'})
@@ -388,7 +418,9 @@ class Handler(BaseHTTPRequestHandler):
             tokens = self.app.sessions.token_request({'grant_type':'authorization_code',
                 'code':query.get('code',''),'code_verifier':pending[1]})
             sid = self.app.sessions.create(tokens)
-            self.redirect(self.app.public,self.set_cookie('hg_session',sid,30*86400));return
+            self.redirect(pending[2],self.set_cookie('hg_session',sid,30*86400));return
+        if path == '/api/recipes/preview-image':
+            self.recipe_preview_image(query);return
         if path.startswith('/api/'):
             key, ha = self.identity()
             if path == '/api/session':
@@ -424,8 +456,12 @@ class Handler(BaseHTTPRequestHandler):
             # The slideshow is part of the dashboard now. Kiosks bookmarked at /wall/ land there, keeping options
             # such as ?idle= or ?debug=.
             self.redirect(self.app.public+('?'+parsed.query if parsed.query else ''));return
-        asset = 'index.html' if path == '/' else path.lstrip('/')
+        # Keep relative assets well-defined if a client appends a slash.
+        if path == '/import-recipe/':
+            self.redirect(self.app.public+'import-recipe'+('?' + parsed.query if parsed.query else ''));return
+        asset = {'/':'index.html','/import-recipe':'import-recipe.html'}.get(path, path.lstrip('/'))
         if asset not in {'index.html','app.js','app.css','sw.js','manifest.webmanifest','icon.svg',
+                        'import-recipe.html','import-recipe.css','import-recipe.js',
                         'icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'}:
             self.send_error(404);return
         file = self.app.static/asset
@@ -449,30 +485,100 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Transfer-Encoding'): raise ValueError('Chunked uploads are not supported')
         return int(self.headers.get('Content-Length','0'))
 
+    def read_json(self, limit=128*1024):
+        size = self.length()
+        if not 0 < size <= limit: raise ValueError('Invalid request size')
+        body = json.loads(self.rfile.read(size))
+        if not isinstance(body, dict): raise ValueError('Invalid request')
+        return body
+
+    def image_signature(self, url, expires):
+        return hmac.digest(self.app.recipe_image_key, (expires+'\n'+url).encode(), 'sha256').hex()
+
+    def recipe_preview_image(self, query):
+        url, expires, signature = (query.get(name, '') for name in ('url', 'expires', 'signature'))
+        if (not re.fullmatch(r'[0-9]{1,12}', expires) or int(expires) <= time.time()
+                or not re.fullmatch(r'[a-f0-9]{64}', signature)
+                or not hmac.compare_digest(signature, self.image_signature(url, expires))):
+            self.send_error(404);return
+        if not self.app.recipe_image_fetches.acquire(blocking=False):
+            self.send_error(429);return
+        try:
+            body = preview_thumbnail(url)
+        except RecipeImportError:
+            self.send_error(404);return
+        finally:
+            self.app.recipe_image_fetches.release()
+        cache = 'private, max-age='+str(max(0, min(600, int(expires)-int(time.time()))))
+        self.respond_headers(200, 'image/jpeg', len(body), cache=cache)
+        self.wfile.write(body)
+
+    def import_recipe(self, body):
+        if body.keys() - {'url', 'preview'} or not isinstance(body.get('preview', False), bool):
+            raise ValueError('Invalid recipe import')
+        preview = body.get('preview', False)
+        if preview:
+            origin = self.headers.get('Origin')
+            if ((origin and origin != self.app.origin) or self.headers.get('Sec-Fetch-Site') == 'cross-site'
+                    or self.headers.get_content_type() != 'application/json'):
+                raise RecipeImportError('Unexpected recipe preview request.', 403)
+        else:
+            guarded = self.write_guard()
+            if not guarded: return
+            _, ha = guarded
+            if not (self.app.data.recipes or '').startswith('sensor.'):
+                raise RecipeImportError('The Hearthglance recipe library is unavailable.', 503)
+        if not self.app.recipe_fetches.acquire(blocking=False):
+            raise RecipeImportError('Too many recipe imports are running. Try again in a moment.', 429)
+        try:
+            recipe = import_from_url(body.get('url'))
+        finally:
+            self.app.recipe_fetches.release()
+        sources = recipe.pop('image_urls', [])
+        if preview:
+            expires = str(int(time.time())+3600)
+            images = ['./api/recipes/preview-image?'+urllib.parse.urlencode({
+                'url':url,'expires':expires,'signature':self.image_signature(url, expires)}) for url in sources]
+            self.send_json({'recipe':recipe,'images':images})
+            return
+        result = self.app.data.save_imported_recipe(ha, recipe)
+        self.send_json(result, 201 if result['created'] else 200)
+
     def do_POST(self):
         try:
+            path = urllib.parse.urlsplit(self.path).path
+            if path == self.app.prefix+'/api/recipes/import':
+                self.import_recipe(self.read_json(limit=32*1024));return
             guarded = self.write_guard()
             if not guarded: return
             key, ha = guarded
-            path = urllib.parse.urlsplit(self.path).path
             if path == self.app.prefix+'/api/photos':
                 # Raw image body is streamed to staging on the media mount, never buffered in memory.
                 photo, created = self.photo_store().upload(self.rfile, self.length(), self.headers.get('Idempotency-Key',''))
                 self.send_json({'photo':photo},201 if created else 200);return
-            size = self.length()
-            if not 0 < size <= 128*1024: raise ValueError('Invalid request size')
-            body = json.loads(self.rfile.read(size))
-            if not isinstance(body,dict): raise ValueError('Invalid request')
+            body = self.read_json()
             if path == self.app.prefix+'/api/logout':
                 self.app.sessions.remove(key);self.app.data.invalidate(key)
                 self.respond_headers(200,'application/json',2,{'Set-Cookie':self.set_cookie('hg_session','',0)})
                 self.wfile.write(b'{}');return
-            if path == self.app.prefix+'/api/command': result = self.app.data.command(ha,body)
+            if path == self.app.prefix+'/api/command':
+                dedupe = body.pop('dedupe_source', False)
+                if dedupe:
+                    if (dedupe is not True or body.get('type') != 'hearthglance_recipes/save'
+                            or body.get('entity_id') != self.app.data.recipes
+                            or set(body) != {'type','entity_id','recipe'} or not isinstance(body['recipe'],dict)):
+                        raise ValueError('Invalid imported recipe')
+                    result = self.app.data.save_imported_recipe(ha, body['recipe'])
+                    if not result['created']:
+                        raise RecipeImportError('A recipe with this source URL is already in your library.', 409)
+                else:
+                    result = self.app.data.command(ha,body)
             elif path == self.app.prefix+'/api/service': result = self.app.data.service(ha,body)
             else: self.send_error(404);return
             self.app.data.invalidate(key)
             self.send_json(result)
         except PhotoError as error: self.close_connection = True; self.send_photo_error(error)
+        except RecipeImportError as error: self.send_json({'error':str(error)},error.status)
         except LoginRequired: self.close_connection = True; self.send_json({'error':'Sign in before saving.'},401)
         except (ValueError, TypeError, KeyError): self.close_connection = True; self.send_json({'error':'Invalid or unsupported action.'},400)
         except Exception: self.close_connection = True; self.send_json({'error':'Could not confirm the save. Refresh before trying again.'},503)

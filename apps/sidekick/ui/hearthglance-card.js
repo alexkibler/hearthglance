@@ -332,6 +332,7 @@ class HearthglanceCard extends HTMLElement {
   if(a==='delete-task'){this._confirmDelete('task',this._editingTask);return;}
   if(a==='add-meal'){this._eventForm(null,{meal:true,date:el.dataset.date});return;}
   if(a==='add-recipe'){this._recipeForm();return;}
+  if(a==='load-recipe-url'){await this._loadRecipeURL(el);return;}
   if(a==='recipe'){this._showRecipe(this._recipeItems().find(r=>r.uid===el.dataset.uid));return;}
   if(a==='edit-recipe'){this._recipeForm(this._selectedRecipe);return;}
   if(a==='meal-recipe'){this._showRecipe(this._recipeItems().find(r=>r.uid===dinnerMeta(this._selectedEvent).recipe));return;}

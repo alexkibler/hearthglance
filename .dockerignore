@@ -8,9 +8,13 @@
 !apps/sidekick/*.mjs
 !apps/sidekick/ui/
 !apps/sidekick/static/index.html
+!apps/sidekick/static/import-recipe.html
+!apps/sidekick/static/import-recipe.css
+!apps/sidekick/static/import-recipe.js
 !apps/sidekick/static/app.css
 !apps/sidekick/static/icon.svg
 !apps/sidekick/static/manifest.webmanifest
 !backend/web/app.py
 !backend/web/photos.py
+!backend/web/recipe_import.py
 !backend/web/requirements.txt

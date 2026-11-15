@@ -93,6 +93,16 @@ test('Wall routes always use the network and never enter the Sidekick shell or p
  const after=JSON.stringify(await Promise.all((await w.store.keys()).map(async name=>[name,(await (await w.store.open(name)).keys()).map(r=>r.url)])));
  assert.equal(after,before);
 });
+test('the import page uses a stylesheet outside the offline shell',async()=>{
+ const html=await readFile(new URL('../static/import-recipe.html',import.meta.url),'utf8');
+ const stylesheet=html.match(/rel="stylesheet" href="([^"]+)"/)?.[1];
+ assert.equal(stylesheet,'./import-recipe.css');
+ const w=worker();await w.dispatch('install');await w.dispatch('activate');
+ assert.ok(await w.fetch('app.css'));
+ assert.equal(await w.fetch('import-recipe?url=https%3A%2F%2Fexample.org'),undefined);
+ assert.equal(await w.fetch(stylesheet),undefined);
+});
+
 test('private caches are bounded and oversized images are not persisted',async()=>{
  const w=worker();for(let index=0;index<205;index++)await w.fetch(photo(index));
  assert.equal((await (await w.store.open('hearthglance-private-thumbnails-v1')).keys()).length,200);

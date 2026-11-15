@@ -19,7 +19,7 @@ COPY backend/web/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
  && mkdir -p /config /data /media \
  && chown 10001:10001 /data /media
-COPY backend/web/app.py backend/web/photos.py ./
+COPY backend/web/app.py backend/web/photos.py backend/web/recipe_import.py ./
 COPY --from=sidekick /build/static ./static
 # Non-root by default; deployments may override with `user:` to match host ownership of /data and /media.
 USER 10001:10001
