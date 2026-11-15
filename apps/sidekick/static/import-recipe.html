@@ -12,12 +12,32 @@
   <main class="recipe-import">
     <a href="./?page=recipes">Hearthglance Recipes</a>
     <h1>Add a recipe</h1>
-    <form>
+    <form id="import-source">
       <label for="recipe-url">Recipe URL</label>
       <input id="recipe-url" name="url" type="url" inputmode="url" maxlength="4096" required autocomplete="off" autocapitalize="none" spellcheck="false">
-      <button class="button" type="submit" disabled>Save recipe</button>
+      <button class="button" type="submit" disabled>Preview recipe</button>
     </form>
-    <p id="import-message" role="status"></p>
+    <p id="import-message" role="status" tabindex="-1"></p>
+    <form id="import-draft" hidden>
+      <h2 tabindex="-1">Review recipe</h2>
+      <fieldset class="recipe-import-fields">
+        <label class="wide">Recipe name<input name="title" required maxlength="500"></label>
+        <label class="wide">Description<textarea name="text" rows="2"></textarea></label>
+        <label>Servings<input name="yield"></label>
+        <label>Prep time<input name="prepTime"></label>
+        <label>Cook time<input name="cookTime"></label>
+        <label>Total time<input name="totalTime"></label>
+        <label class="wide">Categories (comma separated)<input name="categories"></label>
+        <label class="wide">Ingredients<textarea name="ingredients" rows="7" required></textarea></label>
+        <label class="wide">Directions<textarea name="instructions" rows="7" required></textarea></label>
+        <label class="wide">Notes<textarea name="notes" rows="3"></textarea></label>
+        <label class="wide">Nutrition<textarea name="nutrition" rows="4"></textarea></label>
+        <label class="wide">Source URL<input name="link" type="url" maxlength="4096" required></label>
+        <button class="secondary" type="button" id="change-recipe-url">Change URL</button>
+        <button class="button" type="submit">Save recipe</button>
+      </fieldset>
+    </form>
+    <button class="secondary" type="button" id="import-another" hidden>Import another recipe</button>
     <a class="button" id="import-login" href="./auth/login?next=import-recipe" hidden>Sign in to Hearthglance</a>
   </main>
 </body>

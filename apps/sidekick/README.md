@@ -12,8 +12,8 @@ Hearthglance login and native recipe library.
 
 For a browser bookmarklet or an iOS share-sheet shortcut, open
 `<app base>/import-recipe?url=<percent-encoded recipe URL>`. The import page keeps
-the URL across sign-in and has a **Save recipe** button. Opening the URL alone
-does not save anything.
+the URL across sign-in and opens an editable preview. Review or edit the
+recipe, then choose **Save recipe**.
 
 Set the bookmark's address to the following after changing the app base to your installation.
 
